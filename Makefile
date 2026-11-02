@@ -23,6 +23,11 @@ TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp
 TRACE_PROBE := from attest.cli.admin import engine_commands; \
   from attest.engine_manager import resolve_engine; \
   raise SystemExit(0 if "trace" in (engine_commands(resolve_engine()) or {}) else 3)
+# Exit 3 when the installed SDKs have no behavior contracts (attest <= rc.1).
+CONTRACT_PROBE_PY := from attest import ExpectChain; \
+  raise SystemExit(0 if hasattr(ExpectChain, "tool_cardinality") else 3)
+CONTRACT_PROBE_TS := import { ExpectChain } from "@attest-ai/core"; \
+  process.exit(typeof ExpectChain.prototype.toolCardinality === "function" ? 0 : 3)
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
@@ -32,7 +37,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts doctor flaky edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction doctor flaky edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -67,6 +72,7 @@ check:
 	$(REQUIRE_CHANNEL)
 	mkdir -p $(REPORTS)
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
+	$(MAKE) --no-print-directory check-reproduction
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
@@ -80,6 +86,25 @@ check-ts:
 	cd ts && pnpm exec tsc --noEmit
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
+
+# The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
+# CHANNEL=released skips them while its attest has no behavior contracts; edge requires them.
+check-reproduction:
+	@rc=0; (cd py && uv run --no-sync python -c '$(CONTRACT_PROBE_PY)') && \
+	  (cd ts && node --input-type=module -e '$(CONTRACT_PROBE_TS)') || rc=$$?; \
+	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
+	  echo "skipping the INC-1042 reproduction tests: behavior contracts need attest >= 1.0.0-rc.2, and CHANNEL=released has an older attest. They run on CHANNEL=edge."; \
+	  exit 0; \
+	fi; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no behavior contracts (tool_cardinality)"; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory reproduction
+
+reproduction:
+	cd py && uv run --no-sync mypy reproduction
+	cd py && uv run --no-sync pytest reproduction
+	cd ts && pnpm exec tsc --noEmit -p reproduction
+	cd ts && pnpm exec vitest run --config reproduction/vitest.config.ts
 
 doctor:
 	$(REQUIRE_CHANNEL)

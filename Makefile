@@ -12,7 +12,8 @@ export
 
 CHANNEL ?= released
 REPORTS := $(CURDIR)/reports
-STACK := uv run --no-project --python 3.12 python scripts/stack.py --
+PYTHON := uv run --no-project --python 3.12 python
+STACK := $(PYTHON) scripts/stack.py --
 TOOLS := ../scripts ../model-server ../payments
 EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
 
@@ -33,11 +34,14 @@ help:
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
+	rm -f .channel
+ifeq ($(CHANNEL),edge)
+	@$(foreach v,$(EDGE_VARS),test -n "$($(v))" || { echo "CHANNEL=edge needs $(v)"; exit 1; };)
+endif
 	cd py && uv sync --frozen --reinstall-package attest-ai
 	rm -rf ts/node_modules/@attest-ai
 	cd ts && pnpm install --frozen-lockfile
 ifeq ($(CHANNEL),edge)
-	@$(foreach v,$(EDGE_VARS),test -n "$($(v))" || { echo "CHANNEL=edge needs $(v)"; exit 1; };)
 	uv pip install --python py/.venv -e "$(ATTEST_SRC)/sdks/python"
 	for pkg in core vitest; do \
 	  dir=ts/node_modules/@attest-ai/$$pkg; rm -rf $$dir && mkdir -p $$dir; \
@@ -48,7 +52,7 @@ endif
 	echo $(CHANNEL) > .channel
 
 incident:
-	$(STACK) python3 scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
+	$(STACK) $(PYTHON) scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
 
 check:
 	@test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \

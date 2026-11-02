@@ -12,6 +12,7 @@ incidents/INC-1042/span-structure.txt; any difference exits 1. Pass
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import subprocess
@@ -107,7 +108,7 @@ def main() -> int:
         http("POST", f"{model_admin}/_admin/reset", {})
         print(f"\n$ {lang} agent: {request['customer_message']}")
         command = agent_command(lang, request["customer_message"], trace_out)
-        reply = subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+        reply = subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True)
         print(f"  reply: {reply.stdout.strip()}")
         stats = http("GET", f"{model_admin}/_admin/stats")
         print_ledger(lang, http("GET", f"{payments}/_admin/ledger"), stats)
@@ -115,9 +116,8 @@ def main() -> int:
 
     if structures["py"] != structures["ts"]:
         print("\nspan structure differs between trace.py and trace.ts:", file=sys.stderr)
-        for py_line, ts_line in zip(structures["py"], structures["ts"], strict=False):
-            if py_line != ts_line:
-                print(f"  py: {py_line}\n  ts: {ts_line}", file=sys.stderr)
+        diff = difflib.unified_diff(structures["py"], structures["ts"], "trace.py", "trace.ts")
+        sys.stderr.writelines(f"{line.rstrip()}\n" for line in diff)
         return 1
     expected = "\n".join(structures["py"]) + "\n"
     if args.update_structure:

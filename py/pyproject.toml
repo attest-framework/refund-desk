@@ -16,7 +16,7 @@ refund-desk = "refund_desk.cli:main"
 
 [dependency-groups]
 dev = [
-    "attest-ai==1.0.0rc1",
+    "attest-ai==1.0.0rc2",
     "mypy>=1.18",
     "pytest>=8.4",
     "ruff>=0.14",

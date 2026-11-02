@@ -16,6 +16,13 @@ PYTHON := uv run --no-project --python 3.12 python
 STACK := $(PYTHON) scripts/stack.py --
 TOOLS := ../scripts ../model-server ../payments
 EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
+REQUIRE_CHANNEL = @test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
+	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
+TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp.json
+# Exits 3 when the engine the installed SDK resolves has no `trace` command (attest <= rc.1).
+TRACE_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "trace" in (engine_commands(resolve_engine()) or {}) else 3)
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
@@ -25,12 +32,13 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts doctor edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident                         reproduce INC-1042 and regenerate its traces"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
+	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -55,8 +63,7 @@ incident:
 	$(STACK) $(PYTHON) scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
 
 check:
-	@test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
-	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
+	$(REQUIRE_CHANNEL)
 	mkdir -p $(REPORTS)
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
 
@@ -72,6 +79,15 @@ check-ts:
 	cd ts && pnpm exec tsc --noEmit
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
+
+doctor:
+	$(REQUIRE_CHANNEL)
+	@uv run --project py --no-sync python -c '$(TRACE_PROBE)' || { rc=$$?; \
+	  test $$rc -ne 3 || echo >&2 "make doctor needs attest >= 1.0.0-rc.2: the attest-engine on CHANNEL=$(CHANNEL) has no trace command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make doctor CHANNEL=edge"; \
+	  exit $$rc; }
+	@status=0; for trace in $(TRACES); do \
+	  uv run --project py --no-sync attest trace check "$$trace" || status=1; echo; \
+	done; exit $$status
 
 edge-artifacts:
 	@test -n "$(ATTEST_SRC)" || { echo "usage: make edge-artifacts ATTEST_SRC=<attest checkout>"; exit 1; }

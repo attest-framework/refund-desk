@@ -29,7 +29,8 @@ make check      # lint, type-check and run the attest tests in both languages
 | `agent-spec/` | System prompt and tool schemas shared by both agents |
 | `model-server/` | Scripted OpenAI-compatible server: replies per scenario, a seeded `--flaky P` fault, scripted judge replies for attest's layer 6, and a request counter at `/_admin/stats` |
 | `payments/` | Fake payments API with an in-memory ledger and fault scripts (`payments/faults/`) |
-| `incidents/INC-1042/` | The incident request, both OTLP/JSON traces and their expected span structure |
+| `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
+| `incidents/INC-1042/` | The incident request, both OTLP/JSON traces, their expected span structure and a corrected trace with one refund |
 | `stack.mk` | Ports, URLs and the placeholder keys the scripted server ignores |
 
 `make incident` and `make check` start both servers through `scripts/stack.py` and stop them afterwards.
@@ -80,6 +81,35 @@ The traces in `incidents/INC-1042/` record those tool calls. Later acts use them
 | 4 | The fix merges with zero live model calls; a regression pull request is blocked with an annotation |
 | 5 | A coding agent drafts the contract; mutation testing scores it |
 | 6 | Identical verdicts in TypeScript; a viewer artifact on the regression pull request |
+
+## Act 2: a behavior contract catches the double refund
+
+The Act 1 tests check what the agent said. A behavior contract checks what it did. The rule INC-1042 broke is "refund each order at most once", which attest states over the trace's tool calls:
+
+```python
+expect(trace).tool_cardinality("issue_refund", per="order_id", at_most=1)
+```
+
+```typescript
+attestExpect(trace).toolCardinality("issue_refund", { per: "order_id", atMost: 1 });
+```
+
+The contract counts `issue_refund` calls per `order_id` argument. A retried call counts again, so the incident traces report:
+
+```text
+hard_fail  issue_refund called 2× for order_id=O-1042 (max 1)
+```
+
+The output-only tests missed this because the reply never changed: both refunds went through, and the agent told the customer about one of them. The violation is in the tool calls, which only the trace records.
+
+[`py/reproduction/`](py/reproduction/test_inc_1042.py) and [`ts/reproduction/`](ts/reproduction/inc-1042.test.ts) hold the reproduction tests for [issue #2](https://github.com/attest-framework/refund-desk/issues/2). They never run the agent. Each one loads the frozen traces in `incidents/INC-1042/`, converts them through attest's OTel adapter (the engine's `trace convert`) and runs the contract with `inspect()`, which returns the verdict without failing the test. The tests assert that:
+
+- the contract reports exactly `issue_refund called 2× for order_id=O-1042 (max 1)` on `trace.py.otlp.json` and `trace.ts.otlp.json`;
+- the same contract passes on `corrected.otlp.json`, a trace of the same request with one refund.
+
+These tests stay green permanently, including after the fix: they prove the contract catches this bug, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
+
+`make check` runs them after the agent tests. Behavior contracts ship in attest 1.0.0-rc.2, so they run on the edge channel (`make check CHANNEL=edge`, and in the edge CI job). On `CHANNEL=released`, `make check` prints `skipping the INC-1042 reproduction tests` until a release with contracts is verified; on `CHANNEL=edge`, an attest without them fails `make check`.
 
 ## Trace doctor
 

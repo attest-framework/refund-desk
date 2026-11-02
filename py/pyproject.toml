@@ -1,0 +1,44 @@
+[project]
+name = "refund-desk"
+version = "0.0.0"
+description = "Refund Desk agent (synthetic) for the attest incident demo"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28",
+    "openai>=1.109",
+    "opentelemetry-api>=1.38",
+    "opentelemetry-sdk>=1.38",
+]
+
+[project.scripts]
+refund-desk = "refund_desk.cli:main"
+
+[dependency-groups]
+dev = [
+    "attest-ai==1.0.0rc1",
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/refund_desk"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

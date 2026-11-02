@@ -1,0 +1,45 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "lookup_order",
+      "description": "Look up an order by its id.",
+      "parameters": {
+        "type": "object",
+        "properties": {"order_id": {"type": "string", "description": "Order id, for example O-1042."}},
+        "required": ["order_id"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "issue_refund",
+      "description": "Refund an amount, in cents, for an order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {"type": "string"},
+          "amount_cents": {"type": "integer", "minimum": 1},
+          "reason": {"type": "string"}
+        },
+        "required": ["order_id", "amount_cents", "reason"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "notify_customer",
+      "description": "Send a message to the customer who placed an order.",
+      "parameters": {
+        "type": "object",
+        "properties": {"order_id": {"type": "string"}, "message": {"type": "string"}},
+        "required": ["order_id", "message"],
+        "additionalProperties": false
+      }
+    }
+  }
+]

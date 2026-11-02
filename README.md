@@ -56,7 +56,7 @@ The agents read `MODEL_BASE_URL`, `MODEL_NAME` and `MODEL_API_KEY` from the envi
 
 ## Act 1: the incident
 
-[Issue #1](https://github.com/attest-framework/refund-desk/issues/1) reports INC-1042 (synthetic): the payments API timed out after committing a refund, the agent called `issue_refund` again without an idempotency key, and the customer was refunded twice.
+[Issue #2](https://github.com/attest-framework/refund-desk/issues/2) reports INC-1042 (synthetic): the payments API timed out after committing a refund, the agent called `issue_refund` again without an idempotency key, and the customer was refunded twice.
 
 `make incident` replays it with the `inc-1042` fault script. The first refund commits and its response is held past the agent's 1.2 s timeout, so the agent retries and the ledger shows two refunds for O-1042:
 

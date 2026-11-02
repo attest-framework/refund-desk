@@ -2,7 +2,7 @@
 
 > Synthetic incident created to demonstrate attest. No real customer or payment data.
 
-Reported in [issue #1](https://github.com/attest-framework/refund-desk/issues/1).
+Reported in [issue #2](https://github.com/attest-framework/refund-desk/issues/2).
 
 | File | Content |
 |---|---|

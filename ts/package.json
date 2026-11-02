@@ -1,0 +1,30 @@
+{
+  "name": "refund-desk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Refund Desk agent (synthetic) for the attest incident demo",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "packageManager": "pnpm@10.33.3",
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "openai": "7.47.0"
+  },
+  "devDependencies": {
+    "@attest-ai/core": "1.0.0-rc.1",
+    "@attest-ai/vitest": "1.0.0-rc.1",
+    "@types/node": "^22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  }
+}

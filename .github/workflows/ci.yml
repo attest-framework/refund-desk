@@ -1,0 +1,144 @@
+# Demo channels (attest v1.0.0 plan, contract C6):
+#   edge      this commit against attest `main`, built by setup-attest
+#   released  the latest verified-<version> tag against its published packages
+# No job calls a paid model: the scripted model server answers the agent and the
+# attest judge, and no secret is read.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["verified-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  edge:
+    name: edge (attest main)
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build attest main
+        id: attest
+        uses: attest-framework/attest/.github/actions/setup-attest@0b2283542b288b6e1ef54af0c37b5e77339921f6 # v1.0.0-rc.1
+        with:
+          ref: main
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ts/package.json
+
+      - name: Install the agents on attest main
+        env:
+          ATTEST_SRC: ${{ steps.attest.outputs.source-dir }}
+          ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+          ATTEST_CORE_TGZ: ${{ steps.attest.outputs.core-tarball }}
+          ATTEST_VITEST_TGZ: ${{ steps.attest.outputs.vitest-tarball }}
+        run: make setup CHANNEL=edge
+
+      - name: make check
+        env:
+          ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+        run: make check CHANNEL=edge
+
+      - name: Reproduce INC-1042
+        run: make incident
+
+      - name: Upload reports and incident traces
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: edge-reports
+          path: |
+            reports/
+            incidents/INC-1042/trace.*.otlp.json
+          if-no-files-found: warn
+
+  released:
+    name: released (latest verified tag)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Find the latest verified tag
+        id: tag
+        run: |
+          set -euo pipefail
+          # versionsort.suffix sorts 1.0.0-rc.N below 1.0.0.
+          tag="$(git -c versionsort.suffix=-rc tag --list 'verified-*' --sort=-v:refname | head -n 1)"
+          if [ -z "$tag" ]; then
+            echo "::notice::No verified-* tag exists yet; the released channel has nothing to check."
+          elif ! git merge-base --is-ancestor "refs/tags/$tag" refs/remotes/origin/main; then
+            echo "::error::$tag is not on main; verified tags mark main commits only."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the verified tag
+        if: steps.tag.outputs.tag != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+
+      - name: Check the tag pins its published attest version
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#verified-}"
+          pep440="$(echo "$version" | sed -E 's/-rc\.([0-9]+)$/rc\1/')"
+          py="$(grep -A1 '^name = "attest-ai"$' py/uv.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+          core="$(jq -r '.devDependencies["@attest-ai/core"]' ts/package.json)"
+          vitest="$(jq -r '.devDependencies["@attest-ai/vitest"]' ts/package.json)"
+          echo "tag $TAG: attest-ai $py, @attest-ai/core $core, @attest-ai/vitest $vitest"
+          if [ "$py" != "$pep440" ] || [ "$core" != "$version" ] || [ "$vitest" != "$version" ]; then
+            echo "::error::$TAG must pin attest-ai==$pep440 and @attest-ai/*@$version"
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: steps.tag.outputs.tag != ''
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.tag.outputs.tag != ''
+        with:
+          package_json_file: ts/package.json
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.tag.outputs.tag != ''
+        with:
+          node-version: 22
+
+      - name: Install the agents on the published attest
+        if: steps.tag.outputs.tag != ''
+        run: make setup CHANNEL=released
+
+      - name: make check
+        if: steps.tag.outputs.tag != ''
+        run: make check CHANNEL=released
+
+      - name: Upload reports
+        if: always() && steps.tag.outputs.tag != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: released-reports
+          path: reports/
+          if-no-files-found: warn

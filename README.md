@@ -81,6 +81,24 @@ The traces in `incidents/INC-1042/` record those tool calls. Later acts use them
 | 5 | A coding agent drafts the contract; mutation testing scores it |
 | 6 | Identical verdicts in TypeScript; a viewer artifact on the regression pull request |
 
+## Trace doctor
+
+`make doctor` runs `attest trace check` on both committed INC-1042 traces. It exits non-zero when a trace has structural errors (orphan or unpaired spans, reported by span id) and prints what evidence the trace lacks:
+
+```text
+trace check incidents/INC-1042/trace.py.otlp.json
+trace 29478f3e0a07ff5725faf3112a8e3663: 10 spans, attest trace schema v2
+steps: 5 llm_call, 4 tool_call; 1 turn, 0 handoffs, 1 retry
+structure: OK
+coverage: missing evidence
+  cost     5 of 5 llm_call spans lack gen_ai.usage.cost
+  content  5 of 5 llm_call spans lack gen_ai.input.messages / gen_ai.output.messages
+```
+
+The retry is the second `issue_refund` call, made after the first one timed out at 1.2 s: the double refund. The traces record no cost and no message content, so an assertion over either, such as `cost_under(0.05)`, reports not evaluated (`missing_evidence`) instead of passing. The TypeScript trace reports the same counts.
+
+`trace check` ships in attest 1.0.0-rc.2, so `make doctor` runs on the edge channel (`make doctor CHANNEL=edge`, and in the edge CI job). On `CHANNEL=released` it stops with `make doctor needs attest >= 1.0.0-rc.2` until a release with the command is verified.
+
 ## License
 
 [Apache-2.0](LICENSE)

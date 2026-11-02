@@ -125,7 +125,9 @@ def run(settings: Settings, customer_message: str, tracer: trace.Tracer) -> str:
             for _ in range(MAX_MODEL_CALLS):
                 message = chat(tracer, client, settings.model_name, messages)
                 if not message.get("tool_calls"):
-                    reply = str(message["content"])
+                    reply = message["content"]
+                    if not isinstance(reply, str):
+                        raise RuntimeError("model returned neither tool calls nor text")
                     root.set_attribute("refund_desk.reply", reply)
                     return reply
                 messages.append(message)
@@ -160,15 +162,18 @@ def chat(
         span.set_attribute("gen_ai.usage.output_tokens", completion.usage.completion_tokens)
         message: dict[str, Any] = {"role": "assistant", "content": choice.message.content}
         if choice.message.tool_calls:
-            message["tool_calls"] = [
-                {
-                    "id": c.id,
-                    "type": "function",
-                    "function": {"name": c.function.name, "arguments": c.function.arguments},
-                }
-                for c in choice.message.tool_calls
-                if c.type == "function"
-            ]
+            calls = []
+            for c in choice.message.tool_calls:
+                if c.type != "function":
+                    raise RuntimeError(f"unsupported tool call type {c.type!r}")
+                calls.append(
+                    {
+                        "id": c.id,
+                        "type": "function",
+                        "function": {"name": c.function.name, "arguments": c.function.arguments},
+                    }
+                )
+            message["tool_calls"] = calls
         return message
 
 

@@ -7,6 +7,7 @@ import {
   SpanStatusCode,
   trace,
   type Context,
+  type Span,
   type Tracer,
 } from "@opentelemetry/api";
 import OpenAI from "openai";
@@ -34,6 +35,26 @@ export interface Settings {
   paymentsTimeoutMs: number;
 }
 
+function positiveInteger(name: string, raw: string): number {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer, got ${raw}`);
+  return value;
+}
+
+function stringArg(args: Record<string, unknown>, key: string): string {
+  const value = args[key];
+  if (typeof value !== "string") throw new Error(`tool argument ${key} must be a string`);
+  return value;
+}
+
+function integerArg(args: Record<string, unknown>, key: string): number {
+  const value = args[key];
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new Error(`tool argument ${key} must be an integer`);
+  }
+  return value;
+}
+
 export function settingsFromEnv(): Settings {
   const required = (name: string): string => {
     const value = process.env[name];
@@ -45,7 +66,7 @@ export function settingsFromEnv(): Settings {
     modelName: required("MODEL_NAME"),
     modelApiKey: required("MODEL_API_KEY"),
     paymentsBaseUrl: required("PAYMENTS_BASE_URL"),
-    paymentsTimeoutMs: Number.parseInt(required("PAYMENTS_TIMEOUT_MS"), 10),
+    paymentsTimeoutMs: positiveInteger("PAYMENTS_TIMEOUT_MS", required("PAYMENTS_TIMEOUT_MS")),
   };
 }
 
@@ -70,12 +91,16 @@ class Tools {
   constructor(private readonly settings: Settings) {}
 
   async call(name: string, args: Record<string, unknown>): Promise<ToolResult> {
-    if (name === "lookup_order") return this.lookupOrder(String(args.order_id));
+    if (name === "lookup_order") return this.lookupOrder(stringArg(args, "order_id"));
     if (name === "issue_refund") {
-      return this.issueRefund(String(args.order_id), Number(args.amount_cents), String(args.reason));
+      return this.issueRefund(
+        stringArg(args, "order_id"),
+        integerArg(args, "amount_cents"),
+        stringArg(args, "reason"),
+      );
     }
     if (name === "notify_customer") {
-      return this.notifyCustomer(String(args.order_id), String(args.message));
+      return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
     }
     throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
   }
@@ -143,6 +168,12 @@ class Tools {
   }
 }
 
+/** Mark a span failed the way Python's start_as_current_span does on an exception. */
+function failSpan(span: Span, error: unknown): void {
+  span.recordException(error instanceof Error ? error : String(error));
+  span.setStatus({ code: SpanStatusCode.ERROR, message: String(error) });
+}
+
 /** Handle one customer message and return the agent's reply. */
 export async function run(settings: Settings, customerMessage: string, tracer: Tracer): Promise<string> {
   const client = new OpenAI({ baseURL: settings.modelBaseUrl, apiKey: settings.modelApiKey });
@@ -159,7 +190,8 @@ export async function run(settings: Settings, customerMessage: string, tracer: T
     for (let i = 0; i < MAX_MODEL_CALLS; i++) {
       const message = await chat(tracer, rootContext, client, settings.modelName, messages);
       if (!message.tool_calls?.length) {
-        const reply = String(message.content);
+        const reply = message.content;
+        if (typeof reply !== "string") throw new Error("model returned neither tool calls nor text");
         root.setAttribute("refund_desk.reply", reply);
         return reply;
       }
@@ -171,6 +203,9 @@ export async function run(settings: Settings, customerMessage: string, tracer: T
       }
     }
     throw new Error(`no reply after ${MAX_MODEL_CALLS} model calls`);
+  } catch (error) {
+    failSpan(root, error);
+    throw error;
   } finally {
     root.end();
   }
@@ -199,15 +234,21 @@ async function chat(
       role: "assistant",
       content: choice.message.content,
     };
-    const calls = (choice.message.tool_calls ?? []).filter((c) => c.type === "function");
+    const calls = choice.message.tool_calls ?? [];
     if (calls.length > 0) {
-      message.tool_calls = calls.map((c) => ({
-        id: c.id,
-        type: "function",
-        function: { name: c.function.name, arguments: c.function.arguments },
-      }));
+      message.tool_calls = calls.map((c) => {
+        if (c.type !== "function") throw new Error(`unsupported tool call type ${c.type}`);
+        return {
+          id: c.id,
+          type: "function",
+          function: { name: c.function.name, arguments: c.function.arguments },
+        };
+      });
     }
     return message;
+  } catch (error) {
+    failSpan(span, error);
+    throw error;
   } finally {
     span.end();
   }
@@ -234,6 +275,9 @@ async function executeTool(
       span.setStatus({ code: SpanStatusCode.ERROR });
     }
     return content;
+  } catch (error) {
+    failSpan(span, error);
+    throw error;
   } finally {
     span.end();
   }

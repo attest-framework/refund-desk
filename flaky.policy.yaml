@@ -1,0 +1,7 @@
+# Policy for `make flaky` (needs attest >= 1.0.0-rc.2). It compares 20-trial pass
+# rates with the pinned baseline: two-sided 95% Wilson interval, 0.05 tolerance.
+# Exit 0: pass. Exit 1: regressed. Exit 2: inconclusive, or a not_evaluated row
+# (a judge call refused by the budget) under the default `not_evaluated: warn`.
+regression:
+  confidence: 0.95
+  tolerance: 0.05

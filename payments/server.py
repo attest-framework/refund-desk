@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import threading
 import time
@@ -33,6 +34,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 FAULTS_DIR = Path(__file__).parent / "faults"
+FAULT_SCRIPT_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+MAX_BODY_BYTES = 1 << 20
 ORDERS: dict[str, dict[str, Any]] = {
     "O-1042": {
         "order_id": "O-1042",
@@ -53,7 +56,13 @@ ORDERS: dict[str, dict[str, Any]] = {
 }
 
 
+class BadRequestError(Exception):
+    """The request body is not acceptable JSON; answered with HTTP 400."""
+
+
 def load_fault_script(name: str) -> dict[str, Any]:
+    if not FAULT_SCRIPT_NAME.fullmatch(name):
+        raise ValueError(f"invalid fault script name {name!r}")
     path = FAULTS_DIR / f"{name}.json"
     if not path.is_file():
         raise ValueError(f"no fault script {name!r} in {FAULTS_DIR}")
@@ -95,10 +104,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def read_json(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0"))
-        if length == 0:
+        raw_length = self.headers.get("Content-Length", "0")
+        if not raw_length.isdigit() or int(raw_length) > MAX_BODY_BYTES:
+            raise BadRequestError(f"Content-Length must be 0..{MAX_BODY_BYTES}")
+        if int(raw_length) == 0:
             return {}
-        body: dict[str, Any] = json.loads(self.rfile.read(length))
+        try:
+            body = json.loads(self.rfile.read(int(raw_length)))
+        except json.JSONDecodeError as exc:
+            raise BadRequestError(f"body is not JSON: {exc}") from exc
+        if not isinstance(body, dict):
+            raise BadRequestError("body must be a JSON object")
         return body
 
     def do_GET(self) -> None:
@@ -124,12 +140,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:
+        try:
+            self.route_post()
+        except BadRequestError as exc:
+            self.send_json(400, {"error": str(exc)})
+
+    def route_post(self) -> None:
         if self.path == "/refunds":
             self.post_refund()
         elif self.path == "/notifications":
             self.post_notification()
         elif self.path == "/_admin/reset":
             name = self.read_json().get("fault_script")
+            if name is not None and not isinstance(name, str):
+                raise BadRequestError("fault_script must be a string or null")
             try:
                 script = load_fault_script(name) if name is not None else None
             except ValueError as exc:

@@ -24,6 +24,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+MAX_BODY_BYTES = 1 << 20
 AGENT_MODEL = "refund-desk-scripted"
 JUDGE_MODEL = "refund-desk-judge"
 ORDER_ID = re.compile(r"\bO-\d+\b")
@@ -206,8 +207,18 @@ class Handler(BaseHTTPRequestHandler):
             self.error(404, "not_found", f"no route POST {self.path}")
             return
 
-        length = int(self.headers["Content-Length"])
-        request = json.loads(self.rfile.read(length))
+        raw_length = self.headers.get("Content-Length", "")
+        if not raw_length.isdigit() or not 0 < int(raw_length) <= MAX_BODY_BYTES:
+            self.error(400, "invalid_request_error", f"Content-Length must be 1..{MAX_BODY_BYTES}")
+            return
+        try:
+            request = json.loads(self.rfile.read(int(raw_length)))
+        except json.JSONDecodeError as exc:
+            self.error(400, "invalid_request_error", f"body is not JSON: {exc}")
+            return
+        if not isinstance(request, dict) or not isinstance(request.get("messages"), list):
+            self.error(400, "invalid_request_error", "body must be an object with messages")
+            return
         if request.get("stream"):
             self.error(400, "invalid_request_error", "streaming is not scripted")
             return

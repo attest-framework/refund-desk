@@ -84,6 +84,9 @@ jobs:
           tag="$(git -c versionsort.suffix=-rc tag --list 'verified-*' --sort=-v:refname | head -n 1)"
           if [ -z "$tag" ]; then
             echo "::notice::No verified-* tag exists yet; the released channel has nothing to check."
+          elif ! git merge-base --is-ancestor "refs/tags/$tag" refs/remotes/origin/main; then
+            echo "::error::$tag is not on main; verified tags mark main commits only."
+            exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 

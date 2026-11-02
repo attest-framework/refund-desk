@@ -59,6 +59,11 @@ jobs:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make doctor CHANNEL=edge
 
+      - name: make flaky
+        env:
+          ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+        run: make flaky CHANNEL=edge
+
       - name: Reproduce INC-1042
         run: make incident
 

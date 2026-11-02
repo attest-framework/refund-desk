@@ -32,13 +32,14 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts doctor edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts doctor flaky edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident                         reproduce INC-1042 and regenerate its traces"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
+	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -88,6 +89,12 @@ doctor:
 	@status=0; for trace in $(TRACES); do \
 	  uv run --project py --no-sync attest trace check "$$trace" || status=1; echo; \
 	done; exit $$status
+
+flaky:
+	$(REQUIRE_CHANNEL)
+	@cd py && uv run --no-sync python ../scripts/flaky.py || { rc=$$?; \
+	  test $$rc -ne 3 || echo >&2 "make flaky needs attest >= 1.0.0-rc.2: the attest-ai on CHANNEL=$(CHANNEL) has no --attest-trials. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make flaky CHANNEL=edge"; \
+	  exit $$rc; }
 
 edge-artifacts:
 	@test -n "$(ATTEST_SRC)" || { echo "usage: make edge-artifacts ATTEST_SRC=<attest checkout>"; exit 1; }

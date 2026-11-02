@@ -5,7 +5,8 @@
 Reads MODEL_PORT, PAYMENTS_PORT and optional MODEL_FLAKY / MODEL_SEED from the
 environment (the Makefile sets them from stack.mk), waits for both servers to
 answer /healthz, runs the command, stops the servers and exits with the
-command's status. Server logs go to .stack/*.log.
+command's status. Server logs go to .stack/*.log. If STACK_STATS_FILE is set,
+the model server's request counter is also written there as JSON.
 """
 
 from __future__ import annotations
@@ -71,6 +72,8 @@ def main() -> int:
         with urllib.request.urlopen(stats_url, timeout=5) as response:
             stats = response.read().decode()
         print(f"stack: scripted model server requests since its last reset: {stats}")
+        if "STACK_STATS_FILE" in os.environ:
+            Path(os.environ["STACK_STATS_FILE"]).write_text(stats)
         return status
     finally:
         for process in processes:

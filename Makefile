@@ -1,0 +1,88 @@
+# Refund Desk (synthetic). `make help` lists the targets.
+#
+# CHANNEL selects which attest the tests run on (contract C6):
+#   released  the published packages pinned in py/uv.lock and ts/pnpm-lock.yaml (default)
+#   edge      attest built from source; needs ATTEST_SRC, ATTEST_ENGINE_PATH,
+#             ATTEST_CORE_TGZ and ATTEST_VITEST_TGZ (CI sets them from setup-attest;
+#             locally run `make edge-artifacts ATTEST_SRC=<attest checkout>` first)
+
+include stack.mk
+-include .attest-edge/edge.mk
+export
+
+CHANNEL ?= released
+REPORTS := $(CURDIR)/reports
+STACK := uv run --no-project --python 3.12 python scripts/stack.py --
+TOOLS := ../scripts ../model-server ../payments
+EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
+
+ifeq ($(filter $(CHANNEL),released edge),)
+$(error CHANNEL must be released or edge, got "$(CHANNEL)")
+endif
+ifeq ($(CHANNEL),released)
+# The released channel finds the engine the published SDK pins (PATH, ~/.attest or download).
+unexport ATTEST_ENGINE_PATH
+endif
+
+.PHONY: help setup incident check check-py check-ts edge-artifacts clean
+
+help:
+	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
+	@echo "make incident                         reproduce INC-1042 and regenerate its traces"
+	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
+	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
+
+setup:
+	cd py && uv sync --frozen --reinstall-package attest-ai
+	rm -rf ts/node_modules/@attest-ai
+	cd ts && pnpm install --frozen-lockfile
+ifeq ($(CHANNEL),edge)
+	@$(foreach v,$(EDGE_VARS),test -n "$($(v))" || { echo "CHANNEL=edge needs $(v)"; exit 1; };)
+	uv pip install --python py/.venv -e "$(ATTEST_SRC)/sdks/python"
+	for pkg in core vitest; do \
+	  dir=ts/node_modules/@attest-ai/$$pkg; rm -rf $$dir && mkdir -p $$dir; \
+	done
+	tar -xzf "$(ATTEST_CORE_TGZ)" -C ts/node_modules/@attest-ai/core --strip-components=1
+	tar -xzf "$(ATTEST_VITEST_TGZ)" -C ts/node_modules/@attest-ai/vitest --strip-components=1
+endif
+	echo $(CHANNEL) > .channel
+
+incident:
+	$(STACK) python3 scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
+
+check:
+	@test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
+	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
+	mkdir -p $(REPORTS)
+	$(STACK) $(MAKE) --no-print-directory check-py check-ts
+
+check-py:
+	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
+	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
+	cd py && uv run --no-sync mypy
+	cd py && uv run --no-sync pytest --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
+
+check-ts:
+	cd ts && node -p "'@attest-ai/core ' + require('./node_modules/@attest-ai/core/package.json').version"
+	cd ts && pnpm exec tsc --noEmit
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
+	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
+
+edge-artifacts:
+	@test -n "$(ATTEST_SRC)" || { echo "usage: make edge-artifacts ATTEST_SRC=<attest checkout>"; exit 1; }
+	mkdir -p .attest-edge/npm
+	cd "$(ATTEST_SRC)/engine" && go build -o "$(CURDIR)/.attest-edge/attest-engine" ./cmd/attest-engine/
+	cd "$(ATTEST_SRC)/sdks/typescript" && pnpm install --frozen-lockfile && pnpm -r build
+	rm -f .attest-edge/npm/*.tgz
+	for pkg in core vitest; do \
+	  (cd "$(ATTEST_SRC)/sdks/typescript/packages/$$pkg" && pnpm pack --pack-destination "$(CURDIR)/.attest-edge/npm"); \
+	done
+	{ echo "ATTEST_SRC ?= $(abspath $(ATTEST_SRC))"; \
+	  echo "ATTEST_ENGINE_PATH ?= $(CURDIR)/.attest-edge/attest-engine"; \
+	  echo "ATTEST_CORE_TGZ ?= $$(ls $(CURDIR)/.attest-edge/npm/attest-ai-core-*.tgz)"; \
+	  echo "ATTEST_VITEST_TGZ ?= $$(ls $(CURDIR)/.attest-edge/npm/attest-ai-vitest-*.tgz)"; } > .attest-edge/edge.mk
+	@echo "wrote .attest-edge/edge.mk; now: make setup CHANNEL=edge && make check CHANNEL=edge"
+
+clean:
+	rm -rf .stack .attest-edge .channel reports py/.venv ts/node_modules

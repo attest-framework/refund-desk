@@ -1,0 +1,6 @@
+# Lint settings for the stdlib-only tools: model-server/, payments/, scripts/.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]

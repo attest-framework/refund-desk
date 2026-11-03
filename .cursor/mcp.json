@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "attest": {
+      "type": "stdio",
+      "command": "attest",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

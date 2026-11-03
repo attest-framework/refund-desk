@@ -48,3 +48,20 @@ def test_inc_1042_fixed_agent_run_meets_contracts(attest: AttestEngineFixture) -
 
     statuses = [row.status for row in result.assertion_results]
     assert statuses == [status for _, status in EXPECTED]
+
+
+def double_refund_contract() -> ExpectChain:
+    """INC-1042: one refund per order, in the trace and in the payments world."""
+    chain = expect(FIXTURE.trace).tool_cardinality("issue_refund", per="order_id", at_most=1)
+    effects = chain.world(FIXTURE.world)
+    effects.count("refunds", equals=1, order_id="O-1042")
+    effects.unique("refunds", by="idempotency_key")
+    return chain
+
+
+def test_inc_1042_double_refund_contract_holds_on_fixed_agent(
+    attest: AttestEngineFixture,
+) -> None:
+    result = attest.inspect(double_refund_contract())
+
+    assert [row.status for row in result.assertion_results] == ["pass", "pass", "pass"]

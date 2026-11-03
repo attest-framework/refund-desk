@@ -244,9 +244,18 @@ Both fixtures hold the same run, so the numbers match per language:
 
 The mutant `duplicate issue_refund (order_id=O-1042)` is INC-1042 replayed on the fixed run: the agent refunds the order twice. It survives the Act 1 tests, whose reply is the same whether the customer was refunded once or twice, and the contracts kill it (`tool_cardinality`, Act 2). `scripts/mutation_report.py` asserts both outcomes for each language and exits 1 otherwise.
 
-The Act 1 score is 0 because almost none of its checks can fail on this fixture: the captured trace's output is `{"message": ""}`, so the `output_contains` checks do not apply, the `output_not_contains` checks hold on an empty reply for every mutant, and the judge checks are skipped (not deterministic).
+The Act 1 score is 0 because none of its checks can fail on this fixture: the captured trace's output is `{"message": ""}`, so the `output_contains` checks do not apply, the `output_not_contains` checks hold on an empty reply for every mutant, and the judge checks are skipped (not deterministic).
 
 `mutation.policy.yaml` gates on the score (`min_mutation_score` 0.2, severity `block`). `make mutate` asserts that `attest policy evaluate --policy mutation.policy.yaml --mutation <report>` exits 1 for the Act 1 tests and 0 for all contracts. The 19 survivors are the gap Act 5 leaves visible: `attest mutate` prints a contract that would kill each one that the operator table can express. `make check` runs `make mutate` as `check-mutate`.
+
+### Coding agents draft the contracts
+
+Two transcripts in [`docs/agent-transcripts/`](docs/agent-transcripts/) show a coding agent writing an INC-1042 contract with no help beyond attest:
+
+- [With the attest skill](docs/agent-transcripts/2026-11-04-attest-skill-duplicate-refund-contract.md): a fresh Claude Code session with only `attest init --skills` installed, in a copy of this repo without its contracts, is asked to "add a contract that prevents duplicate refunds" and writes a passing replay test.
+- [With the attest MCP server](docs/agent-transcripts/2026-11-04-attest-mcp-inc-1042-contract.md): a fresh session with only the MCP server drafts the contract with `draft_contract` and checks it with `run_contract`. It passes on the fixed agent's fixture and fails on the frozen incident trace. The session then adds it to `py/tests/attest/test_inc_1042.py` (`test_inc_1042_double_refund_contract_holds_on_fixed_agent`).
+
+`attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`, on the edge channel until attest 1.0.0-rc.4 ships `attest mcp`). See `attest guide mcp`.
 
 ## Trace doctor
 

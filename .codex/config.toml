@@ -1,0 +1,3 @@
+[mcp_servers.attest]
+command = "attest"
+args = ["mcp"]

@@ -115,7 +115,7 @@ The output-only tests missed this because the reply never changed: both refunds 
 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug in the frozen traces, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
-`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel. The Act 5 step (`check-mutate`) needs an attest with `attest mutate` (after 1.0.0-rc.3): `make check CHANNEL=released` skips it with a message until a release has it, and `CHANNEL=edge` requires it.
+`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel. The Act 5 step (`check-mutate`) needs an attest with `attest mutate`, which the released channel has from 1.0.0-rc.4.
 
 ## Act 3a: capture
 
@@ -255,7 +255,7 @@ Two transcripts in [`docs/agent-transcripts/`](docs/agent-transcripts/) show a c
 - [With the attest skill](docs/agent-transcripts/2026-11-04-attest-skill-duplicate-refund-contract.md): a fresh Claude Code session with only `attest init --skills` installed, in a copy of this repo without its contracts, is asked to "add a contract that prevents duplicate refunds" and writes a passing replay test.
 - [With the attest MCP server](docs/agent-transcripts/2026-11-04-attest-mcp-inc-1042-contract.md): a fresh session with only the MCP server drafts the contract with `draft_contract` and checks it with `run_contract`. It passes on the fixed agent's fixture, and its trace check fails on the frozen incident trace. The session then adds it to `py/tests/attest/test_inc_1042.py` (`test_inc_1042_double_refund_contract_holds_on_fixed_agent`).
 
-`attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`). Until attest 1.0.0-rc.4 ships `attest mcp`, use the edge channel and also export `ATTEST_ENGINE_PATH=$PWD/.attest-edge/attest-engine`. See `attest guide mcp`.
+`attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`). The released channel has `attest mcp` from 1.0.0-rc.4. See `attest guide mcp`.
 
 ## Trace doctor
 

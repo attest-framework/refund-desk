@@ -41,6 +41,13 @@ WORLD_PROBE := from attest.cli.admin import engine_commands; \
 WORLD_REQUIRE = @uv run --project py --no-sync python -c '$(WORLD_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no world command (the payments API is an attest world). Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
+# Exits 3 when the engine the installed SDK resolves has no `mutate` command (attest <= rc.3).
+MUTATE_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "mutate" in (engine_commands(resolve_engine()) or {}) else 3)
+MUTATE_REQUIRE = @uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || { rc=$$?; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with `attest mutate`: the attest-engine on CHANNEL=$(CHANNEL) has no mutate command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  exit $$rc; }
 # The replay run: no provider key besides a placeholder the agent's settings need (the scripted
 # judge key from stack.mk stays: the engine needs one with ATTEST_JUDGE_BASE_URL), strict
 # replay and the egress guard on. A miss fails the test and nothing is sent to a provider.
@@ -83,7 +90,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -94,6 +101,7 @@ help:
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
+	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -134,6 +142,8 @@ check:
 	$(MAKE) --no-print-directory check-capture || failed="$$failed check-capture"; \
 	echo '$(MAKE) --no-print-directory check-replay'; \
 	$(MAKE) --no-print-directory check-replay || failed="$$failed check-replay"; \
+	echo '$(MAKE) --no-print-directory check-mutate'; \
+	$(MAKE) --no-print-directory check-mutate || failed="$$failed check-mutate"; \
 	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
 check-py:
@@ -190,6 +200,66 @@ replay-miss:
 	$(call REPLAY_REQUIRE,replay-miss)
 	mkdir -p $(REPORTS)
 	scripts/replay-miss.sh
+
+# Act 5: mutation score before and after the contracts. The recording runs write the specs the
+# engine evaluates to $(MUTATE_DIR)/contracts-*/ and their reports next to them; no existing
+# suite's report changes. Nothing here calls a paid model (scripted server, replay, frozen traces).
+MUTATE_DIR := $(REPORTS)/mutate
+MUTATE_ATTEST := uv run --project py --no-sync attest
+# The Act 1 output-only tests are the first three in each file; the last one is the Act 4
+# effect contract.
+ACT1_PY_FILTER := not effect_contract
+ACT1_TS_FILTER := ^(?!.*leaves one refund)
+VITEST_REPORT = --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(1)
+
+check-mutate:
+	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no mutate command"; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory mutate
+
+mutate:
+	$(REQUIRE_CHANNEL)
+	$(call MUTATE_REQUIRE,mutate)
+	$(call WORLD_REQUIRE,mutate)
+	rm -rf $(MUTATE_DIR)
+	mkdir -p $(MUTATE_DIR)
+	$(STACK) $(MAKE) --no-print-directory mutate-record-act1 mutate-record-all
+	@# attest mutate refuses two fixtures with one name (both languages capture "inc-1042"),
+	@# so each language's fixture is mutated on its own; the policy reads the Python reports.
+	$(MUTATE_ATTEST) mutate py/$(FIXTURE) --contracts $(MUTATE_DIR)/contracts-act1 --json > $(MUTATE_DIR)/act1.py.json
+	$(MUTATE_ATTEST) mutate ts/$(FIXTURE) --contracts $(MUTATE_DIR)/contracts-act1 --json > $(MUTATE_DIR)/act1.ts.json
+	$(MUTATE_ATTEST) mutate py/$(FIXTURE) --contracts $(MUTATE_DIR)/contracts-all --json > $(MUTATE_DIR)/contracts.py.json
+	$(MUTATE_ATTEST) mutate ts/$(FIXTURE) --contracts $(MUTATE_DIR)/contracts-all --json > $(MUTATE_DIR)/contracts.ts.json
+	$(PYTHON) scripts/mutation_report.py $(MUTATE_DIR)/act1.py.json $(MUTATE_DIR)/contracts.py.json \
+	  $(MUTATE_DIR)/act1.ts.json $(MUTATE_DIR)/contracts.ts.json
+	@$(MUTATE_ATTEST) policy evaluate --policy mutation.policy.yaml \
+	  --report $(MUTATE_DIR)/attest-report.act1.py.json --mutation $(MUTATE_DIR)/act1.py.json > $(MUTATE_DIR)/policy-act1.json; rc=$$?; \
+	echo "policy on the Act 1 tests: exit $$rc (expected 1)"; test $$rc -eq 1 || exit 1
+	@$(MUTATE_ATTEST) policy evaluate --policy mutation.policy.yaml \
+	  --report $(MUTATE_DIR)/attest-report.contracts.py.json --mutation $(MUTATE_DIR)/contracts.py.json > $(MUTATE_DIR)/policy-contracts.json; rc=$$?; \
+	echo "policy on all contracts: exit $$rc (expected 0)"; test $$rc -eq 0 || exit 1
+
+mutate-record-act1:
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-act1 uv run --no-sync pytest tests/test_refund_desk.py \
+	  -k '$(ACT1_PY_FILTER)' --attest-strict --attest-report=$(MUTATE_DIR)/attest-report.act1.py.json
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-act1 ATTEST_STRICT=1 pnpm exec vitest run tests/refund-desk.test.ts \
+	  -t '$(ACT1_TS_FILTER)' $(call VITEST_REPORT,$(MUTATE_DIR)/attest-report.act1.ts.json)
+
+# Every contract suite: the default scope (Act 1 and the Act 4 effect test), the captured-fixture
+# tests (tests/attest), the reproduction tests and the strict-replay tests.
+mutate-record-all:
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay \
+	  --attest-strict --attest-report=$(MUTATE_DIR)/attest-report.contracts.py.json
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest --attest-strict
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest reproduction
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) uv run --no-sync pytest tests/replay \
+	  --attest-replay=strict --attest-egress=block --attest-strict
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run \
+	  $(call VITEST_REPORT,$(MUTATE_DIR)/attest-report.contracts.ts.json)
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all pnpm exec vitest run --config reproduction/vitest.config.ts
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts
 
 capture-tests:
 	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py

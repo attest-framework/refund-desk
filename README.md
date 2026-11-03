@@ -34,6 +34,7 @@ make check CHANNEL=edge      # lint, type-check and run the attest tests in both
 | `incidents/INC-1042/` | The incident as it shipped, frozen: the request, both OTLP/JSON traces of the double-refund agent, their span structure and a corrected trace with one refund |
 | `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
 | `py/tests/replay/`, `ts/tests/replay/` | The INC-1042 replay tests: today's agent against the captured fixture (Act 3b) |
+| `mutation.policy.yaml`, `scripts/mutation_report.py` | The Act 5 mutation-score gate and the before/after report that `make mutate` prints (Act 5) |
 | `scripts/span-structure.txt` | The span structure of the current agent's incident run, which `make incident` compares against |
 | `stack.mk` | Ports, URLs and the planted fake `OPENAI_API_KEY` the scripted server ignores |
 
@@ -114,7 +115,7 @@ The output-only tests missed this because the reply never changed: both refunds 
 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug in the frozen traces, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
-`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel.
+`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel. The Act 5 step (`check-mutate`) needs an attest with `attest mutate` (after 1.0.0-rc.3): `make check CHANNEL=released` skips it with a message until a release has it, and `CHANNEL=edge` requires it.
 
 ## Act 3a: capture
 
@@ -214,6 +215,38 @@ replay miss: system prompt changed (hash e1b7b67→5305126); re-record with `att
 ```
 
 The hashes are the first seven characters of a hash of the old and new system prompt, so the log shows that it changed without showing the text. After an intended change, `make capture CHANNEL=edge` re-records both fixtures.
+
+## Act 5: test the tests
+
+A suite that stays green when the agent's behavior breaks protects nothing. `attest mutate` measures that on the captured INC-1042 fixture: it makes behavior mutants of the run (a tool call dropped, duplicated or reordered, an argument perturbed, a tool error injected, a world record altered, the output truncated; this fixture's captured reply is empty, so it yields the first six and no `truncate_output` mutant), runs the suite's contracts against each at no model cost, and reports the share it killed. Only behavior is mutated, never source code. See `attest guide mutation` for the operators and the report.
+
+```bash
+make mutate CHANNEL=edge
+```
+
+The target records the contracts twice with `ATTEST_CONTRACTS_DIR`, under `reports/mutate/` only (no existing suite's report changes), and mutates each language's fixture against each recording:
+
+- `contracts-act1`: the three Act 1 output-only tests per language (the reply text), the tests that stayed green through INC-1042;
+- `contracts-all`: every contract suite: those three, the Act 4 effect test, the Act 2 reproduction tests, the Act 3a captured-fixture tests and the Act 3b strict-replay tests.
+
+Both fixtures hold the same run, so the numbers match per language:
+
+| | Act 1 tests | all contracts |
+|---|---|---|
+| mutation score | 0.00 | 0.34 |
+| killed / survived | 0 / 29 | 10 / 19 |
+| `duplicate_tool_call` | 0 / 3 | 3 / 0 |
+| `drop_tool_call` | 0 / 3 | 3 / 0 |
+| `reorder_tool_calls` | 0 / 2 | 2 / 0 |
+| `alter_world_effect` | 0 / 12 | 2 / 10 |
+| `perturb_argument` | 0 / 6 | 0 / 6 |
+| `inject_tool_error` | 0 / 3 | 0 / 3 |
+
+The mutant `duplicate issue_refund (order_id=O-1042)` is INC-1042 replayed on the fixed run: the agent refunds the order twice. It survives the Act 1 tests, whose reply is the same whether the customer was refunded once or twice, and the contracts kill it (`tool_cardinality`, Act 2). `scripts/mutation_report.py` asserts both outcomes for each language and exits 1 otherwise.
+
+The Act 1 score is 0 because almost none of its checks can fail on this fixture: the captured trace's output is `{"message": ""}`, so the `output_contains` checks do not apply, the `output_not_contains` checks hold on an empty reply for every mutant, and the judge checks are skipped (not deterministic).
+
+`mutation.policy.yaml` gates on the score (`min_mutation_score` 0.2, severity `block`). `make mutate` asserts that `attest policy evaluate --policy mutation.policy.yaml --mutation <report>` exits 1 for the Act 1 tests and 0 for all contracts. The 19 survivors are the gap Act 5 leaves visible: `attest mutate` prints a contract that would kill each one that the operator table can express. `make check` runs `make mutate` as `check-mutate`.
 
 ## Trace doctor
 

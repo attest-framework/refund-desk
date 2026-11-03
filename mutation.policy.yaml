@@ -1,0 +1,4 @@
+# Act 5 gate for `make mutate`: `attest policy evaluate --policy mutation.policy.yaml
+# --report <report> --mutation <attest mutate --json>`. The Act 1 output-only tests score
+# 0.00 and block; the full contract suites score above 0.20 and pass.
+min_mutation_score: { score: 0.2, severity: block }

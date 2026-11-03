@@ -175,9 +175,10 @@ capture-check:
 	cd py && uv run --no-sync attest capture --check-redaction $(FIXTURE)
 	cd ts && pnpm exec attest capture --check-redaction $(FIXTURE)
 	@status=0; for fixture in py/$(FIXTURE) ts/$(FIXTURE); do \
-	  for planted in '$(OPENAI_API_KEY)' '$(PLANTED_EMAIL)'; do \
-	    hits=$$(grep -cF -- "$$planted" "$$fixture" || true); \
-	    echo "$$fixture: $$hits hits for $$(echo "$$planted" | cut -c1-14)..."; \
+	  for planted in key email; do \
+	    case $$planted in key) value='$(OPENAI_API_KEY)';; email) value='$(PLANTED_EMAIL)';; esac; \
+	    hits=$$(grep -cF -- "$$value" "$$fixture" || true); \
+	    echo "$$fixture: $$hits hits for the planted $$planted"; \
 	    test "$$hits" -eq 0 || status=1; \
 	  done; \
 	done; exit $$status

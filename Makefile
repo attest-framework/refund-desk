@@ -123,10 +123,14 @@ check:
 	$(REQUIRE_CHANNEL)
 	$(call WORLD_REQUIRE,check)
 	mkdir -p $(REPORTS)
-	$(STACK) $(MAKE) --no-print-directory check-py check-ts
-	$(MAKE) --no-print-directory check-reproduction
-	$(MAKE) --no-print-directory check-capture
-	$(MAKE) --no-print-directory check-replay
+	@# Every suite runs and writes its report even after an earlier one fails, so CI can
+	@# annotate all failures; check still exits non-zero if any suite failed.
+	@status=0; \
+	$(STACK) $(MAKE) --no-print-directory -k check-py check-ts || status=1; \
+	$(MAKE) --no-print-directory check-reproduction || status=1; \
+	$(MAKE) --no-print-directory check-capture || status=1; \
+	$(MAKE) --no-print-directory check-replay || status=1; \
+	exit $$status
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
@@ -171,7 +175,7 @@ check-replay:
 replay-tests:
 	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py
 	cd ts && pnpm exec tsc --noEmit -p tests/replay
-	$(STACK) $(MAKE) --no-print-directory replay-run-py replay-run-ts
+	$(STACK) $(MAKE) --no-print-directory -k replay-run-py replay-run-ts
 
 replay-run-py:
 	cd py && $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \

@@ -46,7 +46,7 @@ MUTATE_PROBE := from attest.cli.admin import engine_commands; \
   from attest.engine_manager import resolve_engine; \
   raise SystemExit(0 if "mutate" in (engine_commands(resolve_engine()) or {}) else 3)
 MUTATE_REQUIRE = @uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with `attest mutate`: the attest-engine on CHANNEL=$(CHANNEL) has no mutate command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with the attest mutate command: the attest-engine on CHANNEL=$(CHANNEL) has no mutate command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
 # The replay run: no provider key besides a placeholder the agent's settings need (the scripted
 # judge key from stack.mk stays: the engine needs one with ATTEST_JUDGE_BASE_URL), strict

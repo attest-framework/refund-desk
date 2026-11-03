@@ -69,6 +69,13 @@ jobs:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make capture-check CHANNEL=edge
 
+      # Acceptance proof for replay: a changed system prompt makes strict replay fail with the
+      # miss message in both languages. The script restores the prompt.
+      - name: make replay-miss
+        env:
+          ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+        run: make replay-miss CHANNEL=edge
+
       - name: Reproduce INC-1042
         run: make incident
 

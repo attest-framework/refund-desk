@@ -18,7 +18,7 @@ Start with `attest-examples` to copy a working setup for your framework. Read th
 Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.io/). No API key.
 
 ```bash
-make edge-artifacts ATTEST_SRC=<attest checkout>   # build attest from source (the payments world needs attest >= 1.0.0-rc.3)
+make edge-artifacts ATTEST_SRC=<attest checkout>   # build attest from source (edge builds attest from a checkout)
 make setup CHANNEL=edge      # uv sync (py/) and pnpm install (ts/), with attest from source
 make incident CHANNEL=edge   # run the incident request in Python and TypeScript, print the payments ledger, require one refund
 make check CHANNEL=edge      # lint, type-check and run the attest tests in both languages
@@ -114,7 +114,7 @@ The output-only tests missed this because the reply never changed: both refunds 
 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug in the frozen traces, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
-`make check` runs them after the agent tests. Behavior contracts ship in attest 1.0.0-rc.2, so they run on the edge channel (`make check CHANNEL=edge`, and in the edge CI job). The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel: on `CHANNEL=released` it stops with that message until a release with `world` is verified.
+`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel.
 
 ## Act 3a: capture
 
@@ -171,7 +171,7 @@ The email is `{{email_1}}` in every place it appears. The key is nowhere in the 
 
 The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section holds the payments world's final state (the two refunds) and the fault that fired. It is evidence only: replay and the tests start a fresh world from `world/`. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
 
-Capture ships after attest 1.0.0-rc.2, so `make capture` and `make capture-check` run on the edge channel. On `CHANNEL=released` they stop with `needs attest >= 1.0.0-rc.3` until a release with the command is verified.
+`make capture` and `make capture-check` need attest >= 1.0.0-rc.3 on every channel.
 
 ## Act 3b: replay
 
@@ -213,7 +213,7 @@ A request matches a recording when its model, parameters, prompt and tool schema
 replay miss: system prompt changed (hash e1b7b67→5305126); re-record with `attest capture --refresh inc-1042`
 ```
 
-The hashes are the first seven characters of a hash of the old and new system prompt, so the log shows that it changed without showing the text. After an intended change, `make capture CHANNEL=edge` re-records both fixtures. Replay and worlds ship after attest 1.0.0-rc.2: on `CHANNEL=released`, `make check` stops with `needs attest >= 1.0.0-rc.3`.
+The hashes are the first seven characters of a hash of the old and new system prompt, so the log shows that it changed without showing the text. After an intended change, `make capture CHANNEL=edge` re-records both fixtures.
 
 ## Trace doctor
 
@@ -231,7 +231,7 @@ coverage: missing evidence
 
 The retry is the second `issue_refund` call, made after the first one timed out at 1.2 s: the double refund. The traces record no cost and no message content, so an assertion over either, such as `cost_under(0.05)`, reports not evaluated (`missing_evidence`) instead of passing. The TypeScript trace reports the same counts.
 
-`trace check` ships in attest 1.0.0-rc.2, so `make doctor` runs on the edge channel (`make doctor CHANNEL=edge`, and in the edge CI job). On `CHANNEL=released` it stops with `make doctor needs attest >= 1.0.0-rc.2` until a release with the command is verified.
+`trace check` ships in attest 1.0.0-rc.2, so `make doctor` runs on both channels.
 
 ## Flaky model: statistical verdicts and a judge budget
 
@@ -247,7 +247,7 @@ One run of a non-deterministic agent cannot show that a change made it worse. `m
 
 The last case shows the judge budget. It runs the test file once with `ATTEST_MAX_JUDGE_CALLS=1` and an empty judge cache. Two tests ask the scripted judge different questions: the first reserves the one call and is served, the second cannot reserve, is never sent, and is `not_evaluated: budget_exhausted`. The model server counts one judge request, the run summary reports `1 calls refused by budget`, and the policy warns (exit 2). Repeated identical questions are answered from the judge cache, so the 20-trial runs above reach the judge at most once.
 
-`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets ship in attest 1.0.0-rc.2, so it runs on the edge channel (`make flaky CHANNEL=edge`, and in the edge CI job). On `CHANNEL=released` it stops with `make flaky needs attest >= 1.0.0-rc.2`. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
+`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets ship in attest 1.0.0-rc.2, so it runs on both channels. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
 
 ## License
 

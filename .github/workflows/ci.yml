@@ -57,6 +57,20 @@ jobs:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make check CHANNEL=edge
 
+      # pr-annotate resolves each row's `file` (relative to the test rootdir) by prefixing the
+      # report's own directory, so the reports go next to the tests that wrote them. This runs
+      # right after `make check`: `make replay-miss` below rewrites the replay reports with its
+      # deliberate miss, which must not be what the pull request sees.
+      - name: Place reports beside their tests
+        if: always()
+        run: |
+          set -eu
+          for lang in py ts; do
+            for f in reports/attest-report."$lang".json reports/attest-report.replay."$lang".json; do
+              if [ -f "$f" ]; then cp "$f" "$lang/"; fi
+            done
+          done
+
       # Before `make incident`, which regenerates the traces: this checks the committed ones.
       - name: make doctor
         env:
@@ -84,18 +98,6 @@ jobs:
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make incident CHANNEL=edge
-
-      # pr-annotate resolves each row's `file` (relative to the test rootdir) by prefixing the
-      # report's own directory, so the reports go next to the tests that wrote them.
-      - name: Place reports beside their tests
-        if: always()
-        run: |
-          set -eu
-          for lang in py ts; do
-            for f in reports/attest-report."$lang".json reports/attest-report.replay."$lang".json; do
-              if [ -f "$f" ]; then cp "$f" "$lang/"; fi
-            done
-          done
 
       - name: Annotate the pull request
         if: always()

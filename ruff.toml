@@ -1,4 +1,4 @@
-# Lint settings for the stdlib-only tools: model-server/, payments/, scripts/.
+# Lint settings for the stdlib-only tools: model-server/, scripts/.
 target-version = "py312"
 line-length = 100
 

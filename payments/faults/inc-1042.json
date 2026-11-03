@@ -1,6 +1,0 @@
-{
-  "description": "INC-1042 (synthetic): the first refund request commits, then its response is held past the client's 1.2 s timeout.",
-  "fault": "timeout_after_commit",
-  "on_requests": [1],
-  "hold_ms": 3000
-}

@@ -14,7 +14,7 @@ CHANNEL ?= released
 REPORTS := $(CURDIR)/reports
 PYTHON := uv run --no-project --python 3.12 python
 STACK := $(PYTHON) scripts/stack.py --
-TOOLS := ../scripts ../model-server ../payments
+TOOLS := ../scripts ../model-server
 EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
 REQUIRE_CHANNEL = @test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
 	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
@@ -34,11 +34,21 @@ REPLAY_PROBE := from attest.cli.admin import engine_commands; \
 REPLAY_REQUIRE = @uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no replay command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
+# Exits 3 when the engine the installed SDK resolves has no `world` command (attest <= rc.2).
+WORLD_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "world" in (engine_commands(resolve_engine()) or {}) else 3)
+WORLD_REQUIRE = @uv run --project py --no-sync python -c '$(WORLD_PROBE)' || { rc=$$?; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no world command (the payments API is an attest world). Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  exit $$rc; }
 # The replay run: no provider key besides a placeholder the agent's settings need (the scripted
 # judge key from stack.mk stays: the engine needs one with ATTEST_JUDGE_BASE_URL), strict
 # replay and the egress guard on. A miss fails the test and nothing is sent to a provider.
 REPLAY_ENV := env -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY \
   OPENAI_API_KEY=replay-needs-no-key ATTEST_REPLAY=strict ATTEST_EGRESS=block
+# Payments is an attest world, hosted per run (capture, replay tests, incident). It needs an
+# attest with world support (edge).
+WORLD := world/payments-inc-1042.world.yaml
 CAPTURE_NAME := inc-1042
 CAPTURE_DIR := $(CURDIR)/.stack/capture-check
 FIXTURE := tests/attest/fixtures/$(CAPTURE_NAME).attest.json
@@ -51,14 +61,11 @@ CAPTURE_TRACES := ../.stack/capture-traces
 # One language's incident under `attest capture`. The capture's own environment points the
 # proxy upstream at the scripted model server; the child gets the proxy URL instead.
 CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  uv run --no-sync attest capture --name $(CAPTURE_NAME) --expect-fail --out-dir $(1) -- \
-  $(PYTHON) ../scripts/incident.py --lang py --trace-dir $(CAPTURE_TRACES)
+  uv run --no-sync attest capture --name $(CAPTURE_NAME) --expect-fail --world ../$(WORLD) --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py --lang py --in-world --trace-dir $(CAPTURE_TRACES)
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --out-dir $(1) -- \
-  $(PYTHON) ../scripts/incident.py --lang ts --trace-dir $(CAPTURE_TRACES)
-# `--refresh` re-runs the fixture's recorded command from the directory it was captured in.
-REFRESH_ENV := OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1
-REFRESH = cd $(1) && $(REFRESH_ENV) $(if $(filter ts,$(1)),pnpm exec,uv run --no-sync) attest capture --refresh $(CAPTURE_NAME) --yes
+  pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --world ../$(WORLD) --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
 CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
@@ -80,7 +87,7 @@ endif
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
-	@echo "make incident                         reproduce INC-1042 and regenerate its traces"
+	@echo "make incident [CHANNEL=edge]          reproduce INC-1042 in a fresh payments world and regenerate its traces"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
@@ -108,10 +115,13 @@ endif
 	echo $(CHANNEL) > .channel
 
 incident:
+	$(REQUIRE_CHANNEL)
+	@test "$(CHANNEL)" = edge || { echo "make incident hosts the payments world with the engine in ATTEST_ENGINE_PATH: run it on the edge channel (make incident CHANNEL=edge)"; exit 1; }
 	$(STACK) $(PYTHON) scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
 
 check:
 	$(REQUIRE_CHANNEL)
+	$(call WORLD_REQUIRE,check)
 	mkdir -p $(REPORTS)
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
 	$(MAKE) --no-print-directory check-reproduction
@@ -146,8 +156,8 @@ check-capture:
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory capture-tests
 
-# The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture, so they
-# need the stack's payments API but call no model. CHANNEL=released skips them until a release
+# The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
+# attest world for payments (the tests host it), so they call no model. CHANNEL=released skips them until a release
 # with replay is verified; edge requires them.
 check-replay:
 	@rc=0; uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || rc=$$?; \
@@ -225,12 +235,15 @@ capture:
 	$(call CAPTURE_REQUIRE,capture)
 	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
 
-# Re-record: where the fixture exists, --refresh re-runs the command recorded in it.
+# Re-record: `attest capture --refresh` refuses a fixture that has a world section, so the
+# fixture is removed and captured again.
 capture-py:
-	if test -f py/$(FIXTURE); then $(call REFRESH,py); else $(call CAPTURE_PY,tests/attest/fixtures); fi
+	rm -f py/$(FIXTURE)
+	$(call CAPTURE_PY,tests/attest/fixtures)
 
 capture-ts:
-	if test -f ts/$(FIXTURE); then $(call REFRESH,ts); else $(call CAPTURE_TS,tests/attest/fixtures); fi
+	rm -f ts/$(FIXTURE)
+	$(call CAPTURE_TS,tests/attest/fixtures)
 
 # Re-captures both languages into a temporary directory and holds the committed fixtures to:
 # byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.

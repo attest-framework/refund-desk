@@ -1,12 +1,14 @@
-"""Run a command with the scripted model server and the payments API up.
+"""Run a command with the scripted model server up.
 
     python3 scripts/stack.py -- <command> [args...]
 
-Reads MODEL_PORT, PAYMENTS_PORT and optional MODEL_FLAKY / MODEL_SEED from the
-environment (the Makefile sets them from stack.mk), waits for both servers to
-answer /healthz, runs the command, stops the servers and exits with the
-command's status. Server logs go to .stack/*.log. If STACK_STATS_FILE is set,
-the model server's request counter is also written there as JSON.
+Reads MODEL_PORT and optional MODEL_FLAKY / MODEL_SEED from the environment (the
+Makefile sets them from stack.mk), waits for the server to answer /healthz, runs
+the command, stops the server and exits with the command's status. The server log
+goes to .stack/model-server.log. If STACK_STATS_FILE is set, the model server's
+request counter is also written there as JSON. The payments API is not started
+here: each test, capture or incident run hosts its own attest world
+(world/*.world.yaml).
 """
 
 from __future__ import annotations
@@ -44,7 +46,6 @@ def main() -> int:
         raise SystemExit("usage: stack.py -- <command> [args...]")
     command = sys.argv[sys.argv.index("--") + 1 :]
     model_port = os.environ["MODEL_PORT"]
-    payments_port = os.environ["PAYMENTS_PORT"]
     model_args = ["--port", model_port, "--flaky", os.environ.get("MODEL_FLAKY", "0")]
     if "MODEL_SEED" in os.environ:
         model_args += ["--seed", os.environ["MODEL_SEED"]]
@@ -54,10 +55,6 @@ def main() -> int:
         "model-server": (
             [sys.executable, str(ROOT / "model-server" / "server.py"), *model_args],
             f"http://127.0.0.1:{model_port}/healthz",
-        ),
-        "payments": (
-            [sys.executable, str(ROOT / "payments" / "server.py"), "--port", payments_port],
-            f"http://127.0.0.1:{payments_port}/healthz",
         ),
     }
     processes: list[subprocess.Popen[bytes]] = []

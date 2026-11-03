@@ -1,8 +1,10 @@
 """Reproduce INC-1042 with the Python and TS agents (synthetic incident).
 
-Run inside scripts/stack.py. For each language: reset the payments ledger with
-the incident's fault script, run the agent on the incident's customer message,
-write incidents/INC-1042/trace.<lang>.otlp.json and print the ledger.
+Run inside scripts/stack.py. For each language: host a fresh attest world
+(world/payments-inc-1042.world.yaml, whose inc-1042 fault is the incident) with
+`attest-engine world`, run the agent on the incident's customer message,
+write incidents/INC-1042/trace.<lang>.otlp.json and print the ledger from the
+world's final snapshot. The engine comes from ATTEST_ENGINE_PATH.
 
 Then compare the span structure of both traces with each other and with
 incidents/INC-1042/span-structure.txt; any difference exits 1. Pass
@@ -12,7 +14,9 @@ Pass --lang py|ts to run one language only: its span structure is checked agains
 span-structure.txt and the cross-language comparison is skipped (`attest capture`
 runs one language per capture). Pass --trace-dir DIR to write the traces there instead
 of incidents/INC-1042/, which keeps the frozen traces untouched; a relative DIR is
-resolved against the caller's working directory.
+resolved against the caller's working directory. Pass --in-world when the caller
+already hosts the world (`attest capture --world`): the agent then runs directly
+and the ledger is read from the world at PAYMENTS_BASE_URL.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -30,6 +35,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 INCIDENT = ROOT / "incidents" / "INC-1042"
 STRUCTURE = INCIDENT / "span-structure.txt"
+WORLD = ROOT / "world" / "payments-inc-1042.world.yaml"
 KIND = {0: "UNSPECIFIED", 1: "INTERNAL", 2: "SERVER", 3: "CLIENT", 4: "PRODUCER", 5: "CONSUMER"}
 STATUS = {0: "UNSET", 1: "OK", 2: "ERROR"}
 
@@ -50,21 +56,34 @@ def agent_command(lang: str, message: str, trace_out: Path) -> list[str]:
             "--trace-out", str(trace_out)]  # fmt: skip
 
 
-def print_ledger(lang: str, ledger: dict[str, Any], stats: dict[str, Any]) -> None:
-    refunds = ledger["refunds"]
+def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> None:
+    refunds = state["refunds"]
     print(f"\nPayments ledger after the {lang} agent (synthetic)")
-    print(f"  {'refund':<8} {'order':<8} {'amount':>8}  {'idempotency key':<16} committed_at")
+    print(f"  {'refund':<8} {'order':<8} {'amount':>8}  idempotency key")
     for refund in refunds:
         amount = f"${refund['amount_cents'] / 100:.2f}"
-        key = refund["idempotency_key"] or "-"
-        print(
-            f"  {refund['refund_id']:<8} {refund['order_id']:<8} {amount:>8}  {key:<16} "
-            f"{refund['committed_at']}"
-        )
+        key = refund.get("idempotency_key") or "-"
+        print(f"  {refund['refund_id']:<8} {refund['order_id']:<8} {amount:>8}  {key}")
     o1042 = [r for r in refunds if r["order_id"] == "O-1042"]
     total = sum(r["amount_cents"] for r in o1042) / 100
     print(f"  O-1042: {len(o1042)} refunds, ${total:.2f} total (order amount $84.00)")
-    print(f"  notifications: {len(ledger['notifications'])}  model requests: {stats['agent']}")
+    print(f"  notifications: {len(state['notifications'])}  model requests: {stats['agent']}")
+
+
+def run_in_fresh_world(command: list[str]) -> tuple[str, dict[str, Any]]:
+    """Run the agent under its own `attest-engine world`; return its reply and the final state."""
+    engine = os.environ.get("ATTEST_ENGINE_PATH")
+    if not engine:
+        raise SystemExit("ATTEST_ENGINE_PATH is not set: run `make incident CHANNEL=edge`")
+    with tempfile.TemporaryDirectory(prefix="refund-desk-world-") as directory:
+        state_out = Path(directory) / "state.json"
+        engine_command = [engine, "world", "--file", str(WORLD), "--state-out", str(state_out)]
+        reply = subprocess.run(
+            [*engine_command, "--", *command],
+            cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True,
+        )  # fmt: skip
+        snapshot = json.loads(state_out.read_text())
+    return reply.stdout, snapshot["state"]
 
 
 def value_text(value: dict[str, Any]) -> str:
@@ -107,6 +126,11 @@ def main() -> int:
         help="run one language only (the span structure is checked against span-structure.txt)",
     )
     parser.add_argument(
+        "--in-world",
+        action="store_true",
+        help="the caller already hosts the world at PAYMENTS_BASE_URL (`attest capture --world`)",
+    )
+    parser.add_argument(
         "--trace-dir",
         type=Path,
         default=INCIDENT,
@@ -115,9 +139,10 @@ def main() -> int:
     args = parser.parse_args()
     if args.update_structure and args.lang is not None:
         parser.error("--update-structure needs both languages")
+    if args.in_world and args.lang is None:
+        parser.error("--in-world hosts one world, so it needs --lang")
 
     request = json.loads((INCIDENT / "request.json").read_text())
-    payments = os.environ["PAYMENTS_BASE_URL"]
     # The admin API is the scripted server itself: under `attest capture`, OPENAI_BASE_URL
     # points at the recording proxy.
     model_admin = f"http://127.0.0.1:{os.environ['MODEL_PORT']}"
@@ -128,14 +153,18 @@ def main() -> int:
     trace_dir.mkdir(parents=True, exist_ok=True)
     for lang in languages:
         trace_out = trace_dir / f"trace.{lang}.otlp.json"
-        http("POST", f"{payments}/_admin/reset", {"fault_script": request["fault_script"]})
         http("POST", f"{model_admin}/_admin/reset", {})
         print(f"\n$ {lang} agent: {request['customer_message']}")
         command = agent_command(lang, request["customer_message"], trace_out)
-        reply = subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True)
-        print(f"  reply: {reply.stdout.strip()}")
+        if args.in_world:
+            reply = subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True)
+            state = http("GET", f"{os.environ['PAYMENTS_BASE_URL']}/_attest/state")["state"]
+            reply_text = reply.stdout
+        else:
+            reply_text, state = run_in_fresh_world(command)
+        print(f"  reply: {reply_text.strip()}")
         stats = http("GET", f"{model_admin}/_admin/stats")
-        print_ledger(lang, http("GET", f"{payments}/_admin/ledger"), stats)
+        print_ledger(lang, state, stats)
         structures[lang] = span_structure(trace_out)
 
     if args.lang is not None:

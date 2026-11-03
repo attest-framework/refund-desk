@@ -212,13 +212,8 @@ ACT1_PY_FILTER := not effect_contract
 ACT1_TS_FILTER := ^(?!.*leaves one refund)
 VITEST_REPORT = --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(1)
 
-# CHANNEL=released skips it until a release with mutate is verified; edge requires it.
 check-mutate:
 	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
-	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
-	  echo "skipping Act 5 mutation score: needs an attest with attest mutate (> 1.0.0-rc.3)"; \
-	  exit 0; \
-	fi; \
 	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no mutate command"; \
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory mutate

@@ -1,6 +1,6 @@
 # Agent transcript: an INC-1042 contract drafted through the attest MCP server
 
-A fresh Claude Code session ran with only the attest MCP server that `attest init --mcp` configured. It drafted the INC-1042 contract with `draft_contract` and iterated it with `run_contract`: the contract passed on the fixed agent's fixture and failed on the frozen incident trace. It then added it as a passing pytest test, which this PR commits. No skills were installed and no live model was called.
+A fresh Claude Code session ran with only the attest MCP server that `attest init --mcp` configured. It drafted the INC-1042 contract with `draft_contract` and iterated it with `run_contract`: the contract passed on the fixed agent's fixture, and its trace check failed on the frozen incident trace. It then added it as a passing pytest test, which this PR commits. No skills were installed and no live model was called.
 
 ## Setup
 
@@ -620,7 +620,7 @@ uv run python -c "import attest,sys;print(attest.__file__)";
 <details><summary>Output</summary>
 
 ````text
-~/WorkSpace/AetherForge/Attest-Framework/attest/sdks/python/src/attest/__init__.py
+<attest checkout>/sdks/python/src/attest/__init__.py
 ````
 
 </details>
@@ -628,7 +628,7 @@ uv run python -c "import attest,sys;print(attest.__file__)";
 **Tool 16: Bash**
 
 ````bash
-cd ~/WorkSpace/AetherForge/Attest-Framework/attest/sdks/python/src/attest && grep -rn "def count\|def unique\|def idempotent\|def world\|^class .*Effect" . | head
+cd <attest checkout>/sdks/python/src/attest && grep -rn "def count\|def unique\|def idempotent\|def world\|^class .*Effect" . | head
 ````
 
 <details><summary>Output</summary>
@@ -649,7 +649,7 @@ Shell cwd was reset to <repo>
 **Tool 17: Bash**
 
 ````bash
-sed -n 60,135p ~/WorkSpace/AetherForge/Attest-Framework/attest/sdks/python/src/attest/expect.py
+sed -n 60,135p <attest checkout>/sdks/python/src/attest/expect.py
 ````
 
 <details><summary>Output</summary>
@@ -803,7 +803,7 @@ Suggested follow-up: rename one of the two files so a single `pytest` run collec
 
 ## Result
 
-The session appended one contract and its test to `py/tests/attest/test_inc_1042.py`. It committed nothing; this PR commits the test as written.
+The session appended one contract and its test to `py/tests/attest/test_inc_1042.py`. It committed nothing. This PR commits the test as written and adds one sentence to the module docstring that points to this transcript.
 
 ```diff
 diff --git a/py/tests/attest/test_inc_1042.py b/py/tests/attest/test_inc_1042.py

@@ -1,7 +1,8 @@
 """Contracts drafted by `attest capture` from fixture "inc-1042".
 
 Review and edit before committing: they check the captured trace without running
-the agent. Re-capturing does not overwrite this file.
+the agent. Re-capturing does not overwrite this file. The last test holds a contract
+drafted with the attest MCP server (docs/agent-transcripts/2026-11-04-attest-mcp-inc-1042-contract.md).
 """
 
 from __future__ import annotations

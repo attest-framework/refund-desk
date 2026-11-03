@@ -62,9 +62,9 @@ export function settingsFromEnv(): Settings {
     return value;
   };
   return {
-    modelBaseUrl: required("MODEL_BASE_URL"),
+    modelBaseUrl: required("OPENAI_BASE_URL"),
     modelName: required("MODEL_NAME"),
-    modelApiKey: required("MODEL_API_KEY"),
+    modelApiKey: required("OPENAI_API_KEY"),
     paymentsBaseUrl: required("PAYMENTS_BASE_URL"),
     paymentsTimeoutMs: positiveInteger("PAYMENTS_TIMEOUT_MS", required("PAYMENTS_TIMEOUT_MS")),
   };

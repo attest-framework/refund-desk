@@ -95,15 +95,33 @@ def span_structure(path: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--update-structure", action="store_true")
+    parser.add_argument(
+        "--lang",
+        choices=("py", "ts"),
+        help="run one language only (the span structure is checked against span-structure.txt)",
+    )
+    parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        default=INCIDENT,
+        help="write the OTLP/JSON traces here instead of the incident directory",
+    )
     args = parser.parse_args()
+    if args.update_structure and args.lang is not None:
+        parser.error("--update-structure needs both languages")
 
     request = json.loads((INCIDENT / "request.json").read_text())
     payments = os.environ["PAYMENTS_BASE_URL"]
-    model_admin = os.environ["MODEL_BASE_URL"].removesuffix("/v1")
+    # The admin API is the scripted server itself: under `attest capture`, OPENAI_BASE_URL
+    # points at the recording proxy.
+    model_admin = f"http://127.0.0.1:{os.environ['MODEL_PORT']}"
     structures: dict[str, list[str]] = {}
 
-    for lang in ("py", "ts"):
-        trace_out = INCIDENT / f"trace.{lang}.otlp.json"
+    languages = (args.lang,) if args.lang is not None else ("py", "ts")
+    trace_dir = args.trace_dir.resolve()
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    for lang in languages:
+        trace_out = trace_dir / f"trace.{lang}.otlp.json"
         http("POST", f"{payments}/_admin/reset", {"fault_script": request["fault_script"]})
         http("POST", f"{model_admin}/_admin/reset", {})
         print(f"\n$ {lang} agent: {request['customer_message']}")
@@ -114,6 +132,13 @@ def main() -> int:
         print_ledger(lang, http("GET", f"{payments}/_admin/ledger"), stats)
         structures[lang] = span_structure(trace_out)
 
+    if args.lang is not None:
+        expected = "\n".join(structures[args.lang]) + "\n"
+        if STRUCTURE.read_text() != expected:
+            print(f"\n{args.lang} span structure differs from {STRUCTURE.name}", file=sys.stderr)
+            return 1
+        print(f"\n{args.lang} span structure matches {STRUCTURE.relative_to(ROOT)}")
+        return 0
     if structures["py"] != structures["ts"]:
         print("\nspan structure differs between trace.py and trace.ts:", file=sys.stderr)
         diff = difflib.unified_diff(structures["py"], structures["ts"], "trace.py", "trace.ts")

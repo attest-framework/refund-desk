@@ -66,9 +66,6 @@ CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
   pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --world ../$(WORLD) --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
-# `--refresh` re-runs the fixture's recorded command from the directory it was captured in.
-REFRESH_ENV := OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1
-REFRESH = cd $(1) && $(REFRESH_ENV) $(if $(filter ts,$(1)),pnpm exec,uv run --no-sync) attest capture --refresh $(CAPTURE_NAME) --yes
 CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
@@ -119,7 +116,7 @@ endif
 
 incident:
 	$(REQUIRE_CHANNEL)
-	$(call WORLD_REQUIRE,incident)
+	@test "$(CHANNEL)" = edge || { echo "make incident hosts the payments world with the engine in ATTEST_ENGINE_PATH: run it on the edge channel (make incident CHANNEL=edge)"; exit 1; }
 	$(STACK) $(PYTHON) scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
 
 check:
@@ -238,12 +235,15 @@ capture:
 	$(call CAPTURE_REQUIRE,capture)
 	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
 
-# Re-record: where the fixture exists, --refresh re-runs the command recorded in it.
+# Re-record: `attest capture --refresh` refuses a fixture that has a world section, so the
+# fixture is removed and captured again.
 capture-py:
-	if test -f py/$(FIXTURE); then $(call REFRESH,py); else $(call CAPTURE_PY,tests/attest/fixtures); fi
+	rm -f py/$(FIXTURE)
+	$(call CAPTURE_PY,tests/attest/fixtures)
 
 capture-ts:
-	if test -f ts/$(FIXTURE); then $(call REFRESH,ts); else $(call CAPTURE_TS,tests/attest/fixtures); fi
+	rm -f ts/$(FIXTURE)
+	$(call CAPTURE_TS,tests/attest/fixtures)
 
 # Re-captures both languages into a temporary directory and holds the committed fixtures to:
 # byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.

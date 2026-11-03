@@ -139,6 +139,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.update_structure and args.lang is not None:
         parser.error("--update-structure needs both languages")
+    if args.in_world and args.lang is None:
+        parser.error("--in-world hosts one world, so it needs --lang")
 
     request = json.loads((INCIDENT / "request.json").read_text())
     # The admin API is the scripted server itself: under `attest capture`, OPENAI_BASE_URL

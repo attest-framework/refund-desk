@@ -61,7 +61,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -99,6 +99,7 @@ check:
 	mkdir -p $(REPORTS)
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
 	$(MAKE) --no-print-directory check-reproduction
+	$(MAKE) --no-print-directory check-capture
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
@@ -106,16 +107,33 @@ check-py:
 	cd py && uv run --no-sync mypy
 	cd py && uv run --no-sync pytest --ignore=tests/attest --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
 	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
-	# The captured INC-1042 test passes because its contract reports the double refund: that
-	# expected hard failure stays out of the policy report.
-	cd py && uv run --no-sync pytest tests/attest --attest-strict
 
 check-ts:
 	cd ts && node -p "'@attest-ai/core ' + require('./node_modules/@attest-ai/core/package.json').version"
 	cd ts && pnpm exec tsc --noEmit
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --exclude 'tests/attest/**' --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run tests/attest
+
+# The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
+# They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
+# vitest `exclude`) and run here, outside the policy report: each test passes because its
+# contract reports the double refund, and that expected hard failure would trip the policy.
+# CHANNEL=released skips them until a release with capture is verified; edge requires them.
+check-capture:
+	@rc=0; uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || rc=$$?; \
+	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
+	  echo "skipping Act 3a capture tests: needs attest >= 1.0.0-rc.3"; \
+	  exit 0; \
+	fi; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no capture command"; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory capture-tests
+
+capture-tests:
+	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py
+	cd py && uv run --no-sync pytest tests/attest --attest-strict
+	cd ts && pnpm exec tsc --noEmit -p tests/attest
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
 # CHANNEL=released skips them while its attest has no behavior contracts; edge requires them.

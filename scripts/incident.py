@@ -7,6 +7,12 @@ write incidents/INC-1042/trace.<lang>.otlp.json and print the ledger.
 Then compare the span structure of both traces with each other and with
 incidents/INC-1042/span-structure.txt; any difference exits 1. Pass
 --update-structure to rewrite that file after an intended agent change.
+
+Pass --lang py|ts to run one language only: its span structure is checked against
+span-structure.txt and the cross-language comparison is skipped (`attest capture`
+runs one language per capture). Pass --trace-dir DIR to write the traces there instead
+of incidents/INC-1042/, which keeps the frozen traces untouched; a relative DIR is
+resolved against the caller's working directory.
 """
 
 from __future__ import annotations

@@ -152,26 +152,16 @@ check-ts:
 # The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
 # They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
 # vitest `exclude`) and run here, outside the policy report.
-# CHANNEL=released skips them until a release with capture is verified; edge requires them.
 check-capture:
 	@rc=0; uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || rc=$$?; \
-	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
-	  echo "skipping Act 3a capture tests: needs attest >= 1.0.0-rc.3"; \
-	  exit 0; \
-	fi; \
 	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no capture command"; \
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory capture-tests
 
 # The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
-# attest world for payments (the tests host it), so they call no model. CHANNEL=released skips them until a release
-# with replay is verified; edge requires them.
+# attest world for payments (the tests host it), so they call no model.
 check-replay:
 	@rc=0; uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || rc=$$?; \
-	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
-	  echo "skipping Act 3b replay tests: needs attest >= 1.0.0-rc.3"; \
-	  exit 0; \
-	fi; \
 	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no replay command"; \
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory replay-tests
@@ -208,14 +198,9 @@ capture-tests:
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
-# CHANNEL=released skips them while its attest has no behavior contracts; edge requires them.
 check-reproduction:
 	@rc=0; (cd py && uv run --no-sync python -c '$(CONTRACT_PROBE_PY)') && \
 	  (cd ts && node --input-type=module -e '$(CONTRACT_PROBE_TS)') || rc=$$?; \
-	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
-	  echo "skipping the INC-1042 reproduction tests: behavior contracts need attest >= 1.0.0-rc.2, and CHANNEL=released has an older attest. They run on CHANNEL=edge."; \
-	  exit 0; \
-	fi; \
 	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no behavior contracts (tool_cardinality)"; \
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory reproduction

@@ -3,7 +3,7 @@
 Run inside scripts/stack.py. For each language: host a fresh attest world
 (world/payments-inc-1042.world.yaml, whose inc-1042 fault is the incident) with
 `attest-engine world`, run the agent on the incident's customer message,
-write incidents/INC-1042/trace.<lang>.otlp.json and print the ledger from the
+write .stack/incident-traces/trace.<lang>.otlp.json and print the ledger from the
 world's final snapshot. The engine comes from ATTEST_ENGINE_PATH.
 
 Then require exactly one refund for O-1042 in the ledger, and compare the span structure of
@@ -15,7 +15,7 @@ shipped double-refund agent, which this script never touches.
 Pass --lang py|ts to run one language only: its span structure is checked against
 scripts/span-structure.txt and the cross-language comparison is skipped (`attest capture`
 runs one language per capture). Pass --trace-dir DIR to write the traces there instead
-of incidents/INC-1042/, which keeps the frozen traces untouched; a relative DIR is
+of .stack/incident-traces/ (incidents/INC-1042/ holds the frozen traces); a relative DIR is
 resolved against the caller's working directory. Pass --in-world when the caller
 already hosts the world (`attest capture --world`): the agent then runs directly
 and the ledger is read from the world at PAYMENTS_BASE_URL.

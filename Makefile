@@ -175,7 +175,7 @@ replay-tests:
 
 replay-run-py:
 	cd py && $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
-	  --attest-strict -rx --attest-report=$(REPORTS)/attest-report.replay.py.json
+	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
 	cd ts && $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \

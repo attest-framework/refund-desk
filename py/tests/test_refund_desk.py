@@ -1,7 +1,7 @@
 """Output-only attest tests for Refund Desk.
 
-These tests check only the reply text, so they stay green under the INC-1042
-fault while the customer is refunded twice. That gap is Act 1 of the demo;
+Most of these tests check only the reply text, so they stayed green under the INC-1042
+fault while the customer was refunded twice. That gap is Act 1 of the demo;
 later acts add trace and effect contracts that catch it. The last test is the effect
 contract on the fixed agent (Act 4).
 """

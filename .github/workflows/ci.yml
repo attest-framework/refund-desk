@@ -67,7 +67,7 @@ jobs:
             done
           done
 
-      # Before `make incident`, which regenerates the traces: this checks the committed ones.
+      # Checks the frozen INC-1042 traces committed under incidents/.
       - name: make doctor
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}

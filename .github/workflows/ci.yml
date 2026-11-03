@@ -99,7 +99,21 @@ jobs:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make incident CHANNEL=edge
 
-      - name: Annotate the pull request
+      # The replay reports carry the current agent's expected INC-1042 failure until the fix act
+      # removes the markers, and the policy blocks on any hard failure, so the policy gates the
+      # live reports here (as `make check` does) and the second call, which runs last and so
+      # owns the summary comment, adds the replay reports without a policy.
+      - name: Gate the live reports and annotate
+        if: always()
+        uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
+        with:
+          report: |
+            py/attest-report.py.json
+            ts/attest-report.ts.json
+          policy: attest.policy.yaml
+          engine-binary: ${{ steps.attest.outputs.engine-path }}
+
+      - name: Summarize all reports and annotate replay misses
         if: always()
         uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
         with:
@@ -108,7 +122,6 @@ jobs:
             py/attest-report.replay.py.json
             ts/attest-report.ts.json
             ts/attest-report.replay.ts.json
-          policy: attest.policy.yaml
           engine-binary: ${{ steps.attest.outputs.engine-path }}
 
       - name: Upload reports and incident traces

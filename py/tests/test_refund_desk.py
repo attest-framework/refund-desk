@@ -2,24 +2,20 @@
 
 These tests check only the reply text, so they stay green under the INC-1042
 fault while the customer is refunded twice. That gap is Act 1 of the demo;
-later acts add trace and effect contracts that catch it.
+later acts add trace and effect contracts that catch it. The last test is the effect
+contract on the fixed agent (Act 4).
 """
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable
-from typing import Any
 
-import httpx
-import pytest
 from attest import Agent, AgentResult, TraceBuilder, expect
 from attest.plugin import AttestEngineFixture
 from attest.world import WorldSession
 from opentelemetry import trace
 
-from refund_desk import agent
-from refund_desk.agent import Settings, Tools, run
+from refund_desk.agent import Settings, run
 
 CONFIRMS_REFUND = "The reply confirms that the refund was processed and states its amount."
 
@@ -78,44 +74,15 @@ def test_unknown_order_reply_says_not_found(
     )
 
 
-class IdempotentRefundTools(Tools):
-    """Test-only tools that send an Idempotency-Key on the refund request.
-
-    The key derives from the order and the amount, so the retry after a timeout carries the same
-    key and the payments world answers it with the first refund. This is what the fix will do;
-    the shipped agent still sends no key.
-    """
-
-    def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
-        key = hashlib.sha256(f"{order_id}:{amount_cents}".encode()).hexdigest()[:16]
-        try:
-            response = self.http.post(
-                "/refunds",
-                json={"order_id": order_id, "amount_cents": amount_cents, "reason": reason},
-                headers={"Idempotency-Key": key},
-            )
-        except httpx.TimeoutException:
-            return {"error": "payments_timeout", "order_id": order_id}
-        response.raise_for_status()
-        refund = response.json()
-        return {
-            "refund_id": refund["refund_id"],
-            "order_id": refund["order_id"],
-            "amount_cents": refund["amount_cents"],
-            "status": "committed",
-        }
-
-
-def test_idempotent_refund_tool_leaves_one_refund_under_the_inc_1042_fault(
+def test_inc_1042_effect_contract_leaves_one_refund(
     attest: AttestEngineFixture,
     payments_world: Callable[[str], WorldSession],
     incident_request: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The scripted model server, not a replay: this variant's tool results differ from the
-    # recording. The fault commits the first refund, the agent retries, the key dedupes it.
+    # The real agent against the scripted model server under the INC-1042 fault: the first refund
+    # commits and its response times out. The agent checks the refund list instead of refunding
+    # again, so one refund exists for the order.
     world = payments_world("payments-inc-1042")
-    monkeypatch.setattr(agent, "Tools", IdempotentRefundTools)
 
     result = refund_desk(Settings.from_env(), incident_request["customer_message"])
 

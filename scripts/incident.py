@@ -6,12 +6,14 @@ Run inside scripts/stack.py. For each language: host a fresh attest world
 write incidents/INC-1042/trace.<lang>.otlp.json and print the ledger from the
 world's final snapshot. The engine comes from ATTEST_ENGINE_PATH.
 
-Then compare the span structure of both traces with each other and with
-incidents/INC-1042/span-structure.txt; any difference exits 1. Pass
---update-structure to rewrite that file after an intended agent change.
+Then require exactly one refund for O-1042 in the ledger, and compare the span structure of
+both traces with each other and with scripts/span-structure.txt (the current agent's); any
+difference exits 1. Pass --update-structure to rewrite that file after an intended agent change.
+The traces go to .stack/incident-traces/: incidents/INC-1042/ holds the frozen traces of the
+shipped double-refund agent, which this script never touches.
 
 Pass --lang py|ts to run one language only: its span structure is checked against
-span-structure.txt and the cross-language comparison is skipped (`attest capture`
+scripts/span-structure.txt and the cross-language comparison is skipped (`attest capture`
 runs one language per capture). Pass --trace-dir DIR to write the traces there instead
 of incidents/INC-1042/, which keeps the frozen traces untouched; a relative DIR is
 resolved against the caller's working directory. Pass --in-world when the caller
@@ -34,7 +36,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 INCIDENT = ROOT / "incidents" / "INC-1042"
-STRUCTURE = INCIDENT / "span-structure.txt"
+STRUCTURE = ROOT / "scripts" / "span-structure.txt"
+TRACE_DIR = ROOT / ".stack" / "incident-traces"
 WORLD = ROOT / "world" / "payments-inc-1042.world.yaml"
 KIND = {0: "UNSPECIFIED", 1: "INTERNAL", 2: "SERVER", 3: "CLIENT", 4: "PRODUCER", 5: "CONSUMER"}
 STATUS = {0: "UNSET", 1: "OK", 2: "ERROR"}
@@ -56,7 +59,8 @@ def agent_command(lang: str, message: str, trace_out: Path) -> list[str]:
             "--trace-out", str(trace_out)]  # fmt: skip
 
 
-def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> None:
+def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> int:
+    """Print the ledger and return the number of refunds for O-1042."""
     refunds = state["refunds"]
     print(f"\nPayments ledger after the {lang} agent (synthetic)")
     print(f"  {'refund':<8} {'order':<8} {'amount':>8}  idempotency key")
@@ -68,6 +72,7 @@ def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> Non
     total = sum(r["amount_cents"] for r in o1042) / 100
     print(f"  O-1042: {len(o1042)} refunds, ${total:.2f} total (order amount $84.00)")
     print(f"  notifications: {len(state['notifications'])}  model requests: {stats['agent']}")
+    return len(o1042)
 
 
 def run_in_fresh_world(command: list[str]) -> tuple[str, dict[str, Any]]:
@@ -123,7 +128,7 @@ def main() -> int:
     parser.add_argument(
         "--lang",
         choices=("py", "ts"),
-        help="run one language only (the span structure is checked against span-structure.txt)",
+        help="run one language only (span structure checked against scripts/span-structure.txt)",
     )
     parser.add_argument(
         "--in-world",
@@ -133,8 +138,8 @@ def main() -> int:
     parser.add_argument(
         "--trace-dir",
         type=Path,
-        default=INCIDENT,
-        help="write the OTLP/JSON traces here instead of the incident directory",
+        default=TRACE_DIR,
+        help="write the OTLP/JSON traces here instead of .stack/incident-traces",
     )
     args = parser.parse_args()
     if args.update_structure and args.lang is not None:
@@ -147,6 +152,7 @@ def main() -> int:
     # points at the recording proxy.
     model_admin = f"http://127.0.0.1:{os.environ['MODEL_PORT']}"
     structures: dict[str, list[str]] = {}
+    refunds_for_order: dict[str, int] = {}
 
     languages = (args.lang,) if args.lang is not None else ("py", "ts")
     trace_dir = args.trace_dir.resolve()
@@ -164,8 +170,14 @@ def main() -> int:
             reply_text, state = run_in_fresh_world(command)
         print(f"  reply: {reply_text.strip()}")
         stats = http("GET", f"{model_admin}/_admin/stats")
-        print_ledger(lang, state, stats)
+        refunds_for_order[lang] = print_ledger(lang, state, stats)
         structures[lang] = span_structure(trace_out)
+
+    doubled = {lang: n for lang, n in refunds_for_order.items() if n != 1}
+    if doubled:
+        for lang, n in doubled.items():
+            print(f"\n{lang} agent left {n} refunds for O-1042 (expected 1)", file=sys.stderr)
+        return 1
 
     if args.lang is not None:
         expected = "\n".join(structures[args.lang]) + "\n"

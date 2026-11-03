@@ -61,10 +61,10 @@ CAPTURE_TRACES := ../.stack/capture-traces
 # One language's incident under `attest capture`. The capture's own environment points the
 # proxy upstream at the scripted model server; the child gets the proxy URL instead.
 CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  uv run --no-sync attest capture --name $(CAPTURE_NAME) --expect-fail --world ../$(WORLD) --out-dir $(1) -- \
+  uv run --no-sync attest capture --name $(CAPTURE_NAME) --world ../$(WORLD) --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py --lang py --in-world --trace-dir $(CAPTURE_TRACES)
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --world ../$(WORLD) --out-dir $(1) -- \
+  pnpm exec attest capture --name $(CAPTURE_NAME) --world ../$(WORLD) --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
 CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
@@ -87,7 +87,7 @@ endif
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
-	@echo "make incident [CHANNEL=edge]          reproduce INC-1042 in a fresh payments world and regenerate its traces"
+	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
@@ -143,8 +143,7 @@ check-ts:
 
 # The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
 # They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
-# vitest `exclude`) and run here, outside the policy report: each test passes because its
-# contract reports the double refund, and that expected hard failure would trip the policy.
+# vitest `exclude`) and run here, outside the policy report.
 # CHANNEL=released skips them until a release with capture is verified; edge requires them.
 check-capture:
 	@rc=0; uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || rc=$$?; \

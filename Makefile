@@ -83,7 +83,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -123,10 +123,18 @@ check:
 	$(REQUIRE_CHANNEL)
 	$(call WORLD_REQUIRE,check)
 	mkdir -p $(REPORTS)
-	$(STACK) $(MAKE) --no-print-directory check-py check-ts
-	$(MAKE) --no-print-directory check-reproduction
-	$(MAKE) --no-print-directory check-capture
-	$(MAKE) --no-print-directory check-replay
+	@# Every suite runs and writes its report even after an earlier one fails, so CI can
+	@# annotate all failures; check still exits non-zero if any suite failed and names them.
+	@failed=; \
+	echo '$(STACK) $(MAKE) --no-print-directory -k check-py check-ts'; \
+	$(STACK) $(MAKE) --no-print-directory -k check-py check-ts || failed="$$failed check-py/check-ts"; \
+	echo '$(MAKE) --no-print-directory check-reproduction'; \
+	$(MAKE) --no-print-directory check-reproduction || failed="$$failed check-reproduction"; \
+	echo '$(MAKE) --no-print-directory check-capture'; \
+	$(MAKE) --no-print-directory check-capture || failed="$$failed check-capture"; \
+	echo '$(MAKE) --no-print-directory check-replay'; \
+	$(MAKE) --no-print-directory check-replay || failed="$$failed check-replay"; \
+	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
@@ -169,9 +177,13 @@ check-replay:
 	$(MAKE) --no-print-directory replay-tests
 
 replay-tests:
+	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
+
+replay-types-py:
 	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py
+
+replay-types-ts:
 	cd ts && pnpm exec tsc --noEmit -p tests/replay
-	$(STACK) $(MAKE) --no-print-directory replay-run-py replay-run-ts
 
 replay-run-py:
 	cd py && $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \

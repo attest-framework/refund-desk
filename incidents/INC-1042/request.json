@@ -1,4 +1,4 @@
 {
-  "customer_message": "Hi, my order O-1042 arrived damaged. Please refund it.",
+  "customer_message": "Hi, jane.doe@example.com: O-1042 came damaged. Refund.",
   "fault_script": "inc-1042"
 }

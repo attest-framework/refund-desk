@@ -18,12 +18,12 @@
           },
           "spans": [
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "db8a4686a3ea875e",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "9a7b9cbefc9c291f",
               "name": "invoke_agent refund-desk",
               "kind": 1,
-              "startTimeUnixNano": "1793604107800000000",
-              "endTimeUnixNano": "1793604109039175250",
+              "startTimeUnixNano": "1793671611779651855",
+              "endTimeUnixNano": "1793671613019841553",
               "attributes": [
                 {
                   "key": "gen_ai.agent.name",
@@ -49,12 +49,12 @@
               }
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "04399e99258389c5",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "fe808d463f4b69db",
               "name": "chat refund-desk-scripted",
               "kind": 3,
-              "startTimeUnixNano": "1793604107800000000",
-              "endTimeUnixNano": "1793604107814646125",
+              "startTimeUnixNano": "1793671611780183350",
+              "endTimeUnixNano": "1793671611795878662",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -102,15 +102,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "7e56d2a1dfb22f55",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "9b89bd3ed6c1a0ed",
               "name": "execute_tool lookup_order",
               "kind": 1,
-              "startTimeUnixNano": "1793604107815000000",
-              "endTimeUnixNano": "1793604107818138959",
+              "startTimeUnixNano": "1793671611796130859",
+              "endTimeUnixNano": "1793671611798716309",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -146,15 +146,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "44e72fca88f3ec27",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "0a08448ed8b3a408",
               "name": "chat refund-desk-scripted",
               "kind": 3,
-              "startTimeUnixNano": "1793604107818000000",
-              "endTimeUnixNano": "1793604107820778208",
+              "startTimeUnixNano": "1793671611798745605",
+              "endTimeUnixNano": "1793671611801057861",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -202,15 +202,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "455be2f323853ba5",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "d92be86c191e75ef",
               "name": "execute_tool issue_refund",
               "kind": 1,
-              "startTimeUnixNano": "1793604107821000000",
-              "endTimeUnixNano": "1793604109024168375",
+              "startTimeUnixNano": "1793671611801185547",
+              "endTimeUnixNano": "1793671613003443115",
               "attributes": [
                 {
                   "key": "error.type",
@@ -252,15 +252,15 @@
               "status": {
                 "code": 2
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "5e39b071ede57520",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "257fc5ca5ff794c7",
               "name": "chat refund-desk-scripted",
               "kind": 3,
-              "startTimeUnixNano": "1793604109025000000",
-              "endTimeUnixNano": "1793604109028500208",
+              "startTimeUnixNano": "1793671613003613281",
+              "endTimeUnixNano": "1793671613009807617",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -308,15 +308,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "535e83551003c6ae",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "6158815c1b66e5d5",
               "name": "execute_tool issue_refund",
               "kind": 1,
-              "startTimeUnixNano": "1793604109028000000",
-              "endTimeUnixNano": "1793604109030673333",
+              "startTimeUnixNano": "1793671613009839600",
+              "endTimeUnixNano": "1793671613012393066",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -352,15 +352,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "4fe5e419f0964b5e",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "c9104f6616632588",
               "name": "chat refund-desk-scripted",
               "kind": 3,
-              "startTimeUnixNano": "1793604109031000000",
-              "endTimeUnixNano": "1793604109033918708",
+              "startTimeUnixNano": "1793671613012443359",
+              "endTimeUnixNano": "1793671613015049805",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -408,15 +408,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "932a1cc2d015de83",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "7bcb5ed9a7a2bdba",
               "name": "execute_tool notify_customer",
               "kind": 1,
-              "startTimeUnixNano": "1793604109034000000",
-              "endTimeUnixNano": "1793604109035862583",
+              "startTimeUnixNano": "1793671613015073486",
+              "endTimeUnixNano": "1793671613016567627",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -452,15 +452,15 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             },
             {
-              "traceId": "8987a7e3685e70848b9512d4c34de441",
-              "spanId": "13bb46a12dbfcddc",
+              "traceId": "43a0104aa916fc2c71968f362c4353e9",
+              "spanId": "111e2b9a51962bce",
               "name": "chat refund-desk-scripted",
               "kind": 3,
-              "startTimeUnixNano": "1793604109036000000",
-              "endTimeUnixNano": "1793604109038972458",
+              "startTimeUnixNano": "1793671613016593506",
+              "endTimeUnixNano": "1793671613019759277",
               "attributes": [
                 {
                   "key": "gen_ai.operation.name",
@@ -508,7 +508,7 @@
               "status": {
                 "code": 0
               },
-              "parentSpanId": "db8a4686a3ea875e"
+              "parentSpanId": "9a7b9cbefc9c291f"
             }
           ]
         }

@@ -1,20 +1,23 @@
 // Act 3b: today's agent code replayed against the captured INC-1042 fixture.
 //
-// The test runs the real agent (`run` in src/agent.ts) on the INC-1042 request against the
-// fake payments API with the `inc-1042` fault script. Its model responses come from
-// tests/attest/fixtures/inc-1042.attest.json through the replay proxy, so it makes no model
-// call. It then checks the behavior contract "issue_refund at most once per order_id".
+// The test runs the real agent (`run` in src/agent.ts) on the INC-1042 request against a fresh
+// attest world with the inc-1042 fault (world/payments-inc-1042.world.yaml). Its model responses
+// come from tests/attest/fixtures/inc-1042.attest.json through the replay proxy, so it makes no
+// model call. It then checks the effect contract "one refund for O-1042" against the world's
+// final state.
 //
 // The agent still double-refunds, so the contract fails and `it.fails` turns that into an
 // expected failure. `it.fails` makes the test fail the day the bug disappears, until the fix
 // removes it. It cannot tell a contract failure from any other error, so the replay and the
 // first evaluation run in a plain test: a setup, engine, agent or replay error fails there, and
 // only the contract's verdict is expected to fail. A replay miss is never an expected failure.
+// The trace contract on the same incident lives in the reproduction and capture tests.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OTelAdapter, attestExpect, type ExpectChain, type Trace } from "@attest-ai/core";
-import { evaluate, inspect, useReplay } from "@attest-ai/vitest";
+import { fileURLToPath } from "node:url";
+import { OTelAdapter, attestExpect, type ExpectChain, type Trace, type WorldSnapshot } from "@attest-ai/core";
+import { evaluate, inspect, useReplay, useWorld } from "@attest-ai/vitest";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { describe, expect, it } from "vitest";
@@ -23,18 +26,9 @@ import { writeOtlpJson } from "../../src/otlp-json.js";
 
 const incidentRequest = JSON.parse(
   readFileSync(new URL("../../../incidents/INC-1042/request.json", import.meta.url), "utf8"),
-) as { customer_message: string; fault_script: string };
-const paymentsBaseUrl = process.env.PAYMENTS_BASE_URL;
+) as { customer_message: string };
 
-async function resetPayments(faultScript: string): Promise<void> {
-  if (!paymentsBaseUrl) throw new Error("PAYMENTS_BASE_URL is not set; run through `make` or export stack.mk");
-  const response = await fetch(`${paymentsBaseUrl}/_admin/reset`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fault_script: faultScript }),
-  });
-  if (!response.ok) throw new Error(`payments reset failed: ${response.status}`);
-}
+const worldFile = fileURLToPath(new URL("../../../world/payments-inc-1042.world.yaml", import.meta.url));
 
 /** Run the real agent against the fixture and return its OTLP/JSON trace. */
 async function replayAgentTrace(message: string): Promise<string> {
@@ -58,28 +52,32 @@ async function replayAgentTrace(message: string): Promise<string> {
   }
 }
 
-function oneRefundPerOrder(trace: Trace): ExpectChain {
-  return attestExpect(trace).toolCardinality("issue_refund", { per: "order_id", atMost: 1 });
+function oneRefundForTheOrder(trace: Trace, world: WorldSnapshot): ExpectChain {
+  return attestExpect(trace)
+    .world(world)
+    .count("refunds", { equals: 1, where: { order_id: "O-1042" } });
 }
 
 describe("INC-1042 replay", () => {
   let trace: Trace | undefined;
+  let world: WorldSnapshot | undefined;
 
   it("replays today's agent on the incident request", async () => {
-    await resetPayments(incidentRequest.fault_script);
+    const session = await useWorld(worldFile);
 
     trace = await OTelAdapter.fromOtlp(await replayAgentTrace(incidentRequest.customer_message));
 
     // inspect() starts the evaluation engine here and never fails on a verdict. This test only
     // requires that the contract was evaluated (an engine error or not_evaluated fails it);
     // the verdict is left to the expected-failure test.
-    const result = await inspect(oneRefundPerOrder(trace));
+    world = await session.state();
+    const result = await inspect(oneRefundForTheOrder(trace, world));
     expect(["pass", "hard_fail"]).toContain(result.assertionResults[0]?.status);
   });
 
-  it.fails("issues one refund per order (INC-1042: issue #2)", async () => {
-    if (trace === undefined) throw new Error("the replay test did not produce a trace");
+  it.fails("leaves one refund for the order (INC-1042: issue #2)", async () => {
+    if (trace === undefined || world === undefined) throw new Error("the replay test did not produce a trace");
 
-    await evaluate(oneRefundPerOrder(trace));
+    await evaluate(oneRefundForTheOrder(trace, world));
   });
 });

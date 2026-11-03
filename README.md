@@ -2,7 +2,7 @@
 
 > **Synthetic.** Everything in this repository is invented to demonstrate [attest](https://github.com/attest-framework/attest): the company, the customers, the orders, the payments and the incidents. No real customer or payment data is used, and no paid model API is called.
 
-Refund Desk is a small customer-support agent, written in Python and TypeScript, that looks up orders, issues refunds and notifies customers. It runs against a scripted OpenAI-compatible model server and a fake payments API, so every run is free and reproducible.
+Refund Desk is a small customer-support agent, written in Python and TypeScript, that looks up orders, issues refunds and notifies customers. It runs against a scripted OpenAI-compatible model server and a payments API that is an [attest world](https://github.com/attest-framework/attest/blob/main/docs/guides/world-fixtures.md), so every run is free and reproducible.
 
 ## Role of this repository
 
@@ -19,7 +19,7 @@ Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.i
 
 ```bash
 make setup      # uv sync (py/) and pnpm install (ts/), with attest pinned to the latest verified release
-make incident   # reproduce INC-1042 in Python and TypeScript, print the payments ledger, regenerate the traces
+make incident CHANNEL=edge   # reproduce INC-1042 in Python and TypeScript, print the payments ledger, regenerate the traces
 make check      # lint, type-check and run the attest tests in both languages
 ```
 
@@ -28,7 +28,7 @@ make check      # lint, type-check and run the attest tests in both languages
 | `py/`, `ts/` | The Refund Desk agent: an OpenAI chat-completions tool loop with `lookup_order`, `issue_refund` and `notify_customer`, plus its pytest / Vitest attest tests |
 | `agent-spec/` | System prompt and tool schemas shared by both agents |
 | `model-server/` | Scripted OpenAI-compatible server: replies per scenario, a seeded `--flaky P` fault, scripted judge replies for attest's layer 6, and a request counter at `/_admin/stats` |
-| `payments/` | Fake payments API with an in-memory ledger and fault scripts (`payments/faults/`) |
+| `world/` | The payments API as attest worlds (`world.yaml`): `payments.world.yaml` is healthy, `payments-inc-1042.world.yaml` adds the INC-1042 fault. Every run, test and capture hosts a fresh one |
 | `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
 | `incidents/INC-1042/` | The incident request, both OTLP/JSON traces, their expected span structure and a corrected trace with one refund |
 | `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
@@ -61,13 +61,13 @@ The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the en
 
 [Issue #2](https://github.com/attest-framework/refund-desk/issues/2) reports INC-1042 (synthetic): the payments API timed out after committing a refund, the agent called `issue_refund` again without an idempotency key, and the customer was refunded twice.
 
-`make incident` replays it with the `inc-1042` fault script. The first refund commits and its response is held past the agent's 1.2 s timeout, so the agent retries and the ledger shows two refunds for O-1042:
+`make incident` replays it in a fresh `world/payments-inc-1042.world.yaml` world, whose `timeout_after_commit` fault fires on the first refund request. The refund commits and its response is held until the agent's 1.2 s timeout, so the agent retries and the world's state shows two refunds for O-1042:
 
 ```text
 Payments ledger after the py agent (synthetic)
-  refund   order      amount  idempotency key  committed_at
-  R-0001   O-1042     $84.00  -                2026-11-02T07:09:46.362Z
-  R-0002   O-1042     $84.00  -                2026-11-02T07:09:47.568Z
+  refund   order      amount  idempotency key
+  R-0001   O-1042     $84.00  -
+  R-0002   O-1042     $84.00  -
   O-1042: 2 refunds, $168.00 total (order amount $84.00)
 ```
 
@@ -165,13 +165,13 @@ The email is `{{email_1}}` in every place it appears. The key is nowhere in the 
 | `grep` each fixture for the planted key and the email | 0 hits |
 | `attest trace check` on each fixture | exit 0 |
 
-The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section is reserved for the payments state replay will simulate. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
+The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section holds the payments world's final state (the two refunds) and the fault that fired. It is evidence only: replay and the tests start a fresh world from `world/`. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
 
 Capture ships after attest 1.0.0-rc.2, so `make capture` and `make capture-check` run on the edge channel. On `CHANNEL=released` they stop with `needs attest >= 1.0.0-rc.3` until a release with the command is verified.
 
 ## Act 3b: replay
 
-Capture recorded the model's side of the incident. Replay serves it back: the tests run today's agent code (`refund_desk.agent.run`, `ts/src/agent.ts` `run`) on the INC-1042 request against the fake payments API with the `inc-1042` fault script, exactly as `make incident` does, while a local proxy answers every model request from `tests/attest/fixtures/inc-1042.attest.json`. No model is called and no key is needed.
+Capture recorded the model's side of the incident. Replay serves it back: the tests run today's agent code (`refund_desk.agent.run`, `ts/src/agent.ts` `run`) on the INC-1042 request against a fresh payments world with the `inc-1042` fault, exactly as `make incident` does, while a local proxy answers every model request from `tests/attest/fixtures/inc-1042.attest.json`. No model is called and no key is needed.
 
 ```bash
 make setup CHANNEL=edge
@@ -187,11 +187,13 @@ ATTEST_REPLAY=strict ATTEST_EGRESS=block vitest run --config tests/replay/vitest
 ```
 
 ```text
-XFAIL tests/replay/test_inc_1042_replay.py::test_inc_1042_replay_issues_one_refund_per_order - INC-1042: issue #2
+XFAIL tests/replay/test_inc_1042_replay.py::test_inc_1042_replay_leaves_one_refund_for_the_order - INC-1042: issue #2
 attest replay: 5 replayed · 0 live model calls · $0.00
 ```
 
-Each test asserts the behavior contract "issue_refund at most once per order_id" with `evaluate()` on the trace of the replayed run. The agent still double-refunds, so the assertion fails.
+Each test asserts the effect contract `count("refunds", equals=1, order_id="O-1042")` with `evaluate()` against the world's final state, and the agent still double-refunds, so the assertion fails with `effect violated: 2 refunds for O-1042 (expected 1)`. The trace contract on the same incident stays in the reproduction and capture tests.
+
+The corrected variant (`test_idempotent_refund_tool_leaves_one_refund_under_the_inc_1042_fault`, and its TypeScript twin in `ts/tests/refund-desk.test.ts`) runs a test-only refund tool that sends an `Idempotency-Key` derived from the order and the amount. It runs against the scripted model server, not the replay, because its tool results differ from the recording; the fault still commits the first refund, the retry carries the same key, and the world answers it with the first refund: one refund, the same effect contract passes. It is a regular test, not under the strict marker. The shipped agent is unchanged; the fix act changes it.
 
 ### The strict marker
 

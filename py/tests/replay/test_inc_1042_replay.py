@@ -1,15 +1,16 @@
 """Act 3b: today's agent code replayed against the captured INC-1042 fixture.
 
-The test runs the real agent (`refund_desk.agent.run`) on the INC-1042 request against the
-fake payments API with the `inc-1042` fault script. Its model responses come from
-tests/attest/fixtures/inc-1042.attest.json through the replay proxy, so it makes no model call.
-It then checks the behavior contract "issue_refund at most once per order_id".
+The test runs the real agent (`refund_desk.agent.run`) on the INC-1042 request against a fresh
+attest world with the inc-1042 fault (world/payments-inc-1042.world.yaml). Its model responses
+come from tests/attest/fixtures/inc-1042.attest.json through the replay proxy, so it makes no
+model call. It then checks the effect contract "one refund for O-1042" against the world's
+final state.
 
 The agent still double-refunds, so the contract fails and the strict xfail marker turns that
 into an expected failure. The marker makes the test fail the day the bug disappears, until the
 fix removes it. `raises` limits it to attest's failure on this contract, so a setup, engine or
 agent error is a real failure, and a replay miss is never an expected failure whatever the marker
-says.
+says. The trace contract on the same incident lives in the reproduction and capture tests.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import pytest
 from attest import OTelAdapter, expect
 from attest.plugin import AttestEngineFixture
 from attest.replay import ReplaySession
+from attest.world import WorldSession
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -51,23 +53,25 @@ def replay_agent_trace(
     strict=True,
     # Only attest's own failure on this contract counts: an engine that fails to start also
     # raises pytest.fail.Exception, in the attest fixture's setup, with another message.
-    raises=pytest.RaisesExc(pytest.fail.Exception, match=r"issue_refund called 2×"),
+    raises=pytest.RaisesExc(
+        pytest.fail.Exception, match=r"effect violated: 2 refunds for O-1042 \(expected 1\)"
+    ),
     reason="INC-1042: issue #2",
 )
-def test_inc_1042_replay_issues_one_refund_per_order(
+def test_inc_1042_replay_leaves_one_refund_for_the_order(
     attest: AttestEngineFixture,
     attest_replay: Callable[..., ReplaySession],
-    payments: Callable[[str | None], None],
+    payments_world: Callable[[str], WorldSession],
     incident_request: dict[str, str],
     tmp_path: Path,
 ) -> None:
-    payments(incident_request["fault_script"])
+    world = payments_world("payments-inc-1042")
     trace_file = tmp_path / "trace.otlp.json"
 
     replay_agent_trace(attest_replay, incident_request["customer_message"], trace_file)
 
     attest.evaluate(
-        expect(OTelAdapter.from_otlp(trace_file)).tool_cardinality(
-            "issue_refund", per="order_id", at_most=1
-        )
+        expect(OTelAdapter.from_otlp(trace_file))
+        .world(world.state())
+        .count("refunds", equals=1, order_id="O-1042")
     )

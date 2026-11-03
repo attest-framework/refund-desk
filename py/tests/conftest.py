@@ -1,43 +1,31 @@
-"""Fixtures for the Refund Desk tests: settings and the fake payments API.
+"""Fixtures for the Refund Desk tests: the payments world and the incident request.
 
-The scripted model server and the payments API must already run; `make check`
-starts them through scripts/stack.py.
+The scripted model server must already run (`make check` starts it through
+scripts/stack.py); each test hosts its own payments world from world/.
 """
 
 from __future__ import annotations
 
 import json
-import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
+from attest.world import WorldSession
 
-from refund_desk.agent import Settings
-
-
-def admin(url: str, body: dict[str, Any] | None = None) -> Any:
-    data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(url, data=data, method="POST" if data else "GET")
-    request.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.loads(response.read())
+WORLDS = Path(__file__).resolve().parents[2] / "world"
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return Settings.from_env()
+def payments_world(attest_world: Callable[..., WorldSession]) -> Callable[[str], WorldSession]:
+    """Host a fresh payments world for the test: `payments_world("payments")` is healthy and
+    `payments_world("payments-inc-1042")` arms the INC-1042 fault. It sets PAYMENTS_BASE_URL until
+    the test ends, so read `Settings.from_env()` after the call."""
 
+    def start(name: str) -> WorldSession:
+        return attest_world(WORLDS / f"{name}.world.yaml")
 
-@pytest.fixture
-def payments(settings: Settings) -> Callable[[str | None], None]:
-    """Reset the payments ledger, optionally arming a fault script."""
-
-    def reset(fault_script: str | None) -> None:
-        admin(f"{settings.payments_base_url}/_admin/reset", {"fault_script": fault_script})
-
-    return reset
+    return start
 
 
 @pytest.fixture(scope="session")

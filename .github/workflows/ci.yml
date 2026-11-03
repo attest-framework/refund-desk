@@ -77,7 +77,9 @@ jobs:
         run: make replay-miss CHANNEL=edge
 
       - name: Reproduce INC-1042
-        run: make incident
+        env:
+          ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+        run: make incident CHANNEL=edge
 
       - name: Upload reports and incident traces
         if: always()

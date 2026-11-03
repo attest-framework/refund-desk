@@ -1,0 +1,45 @@
+# The payments and support API the Refund Desk agents call (synthetic), as an attest world,
+# with the INC-1042 fault armed. `attest-engine world`, `attest capture --world` and the test
+# helpers host it on a loopback port and put its base URL in PAYMENTS_BASE_URL; every run
+# starts from this file, so nothing resets.
+#
+# inc-1042: the first refund commits, then its response is held until the client gives up
+# (the agent's PAYMENTS_TIMEOUT_MS), so the agent retries and refunds twice.
+#
+# payments.world.yaml is the same world without the fault. A world file has no include, so
+# keep the two in step: they differ only in the `faults` list.
+world_version: 1
+base_url_env: PAYMENTS_BASE_URL
+seed: 1042
+resources:
+  orders:
+    path: /orders
+    id_field: order_id
+    routes: [get]
+    seed:
+      - order_id: O-1042
+        customer_id: C-0311
+        item: Ceramic pour-over set (synthetic)
+        amount_cents: 8400
+        currency: USD
+        status: delivered
+      - order_id: O-2001
+        customer_id: C-0520
+        item: Linen apron (synthetic)
+        amount_cents: 2650
+        currency: USD
+        status: delivered
+  refunds:
+    path: /refunds
+    id_field: refund_id
+    id_format: "R-%04d"
+    routes: [create, list, get]
+    filters: [order_id]
+    idempotency: {header: Idempotency-Key, field: idempotency_key}
+  notifications:
+    path: /notifications
+    id_field: notification_id
+    id_format: "N-%04d"
+    routes: [create]
+faults:
+  - {id: inc-1042, resource: refunds, route: create, fault: timeout_after_commit, on_requests: [1]}

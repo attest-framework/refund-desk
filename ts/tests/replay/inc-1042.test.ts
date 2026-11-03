@@ -70,10 +70,11 @@ describe("INC-1042 replay", () => {
 
     trace = await OTelAdapter.fromOtlp(await replayAgentTrace(incidentRequest.customer_message));
 
-    // inspect() starts the evaluation engine here and never fails on a verdict, so an engine
-    // error fails this test; the contract's verdict is left to the expected-failure test.
+    // inspect() starts the evaluation engine here and never fails on a verdict. This test only
+    // requires that the contract was evaluated (an engine error or not_evaluated fails it);
+    // the verdict is left to the expected-failure test.
     const result = await inspect(oneRefundPerOrder(trace));
-    expect(result.assertionResults.map((row) => row.status)).toContain("hard_fail");
+    expect(["pass", "hard_fail"]).toContain(result.assertionResults[0]?.status);
   });
 
   it.fails("issues one refund per order (INC-1042: issue #2)", async () => {

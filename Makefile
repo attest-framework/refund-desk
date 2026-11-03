@@ -178,7 +178,7 @@ replay-miss:
 	$(REQUIRE_CHANNEL)
 	$(call REPLAY_REQUIRE,replay-miss)
 	mkdir -p $(REPORTS)
-	$(STACK) scripts/replay-miss.sh
+	scripts/replay-miss.sh
 
 capture-tests:
 	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py

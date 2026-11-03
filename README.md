@@ -115,7 +115,7 @@ The output-only tests missed this because the reply never changed: both refunds 
 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug in the frozen traces, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
-`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel.
+`make check` runs them after the agent tests. The payments API is an attest world, so `make check` needs attest >= 1.0.0-rc.3 on every channel. The Act 5 step (`check-mutate`) needs an attest with `attest mutate` (after 1.0.0-rc.3): `make check CHANNEL=released` skips it with a message until a release has it, and `CHANNEL=edge` requires it.
 
 ## Act 3a: capture
 
@@ -218,7 +218,7 @@ The hashes are the first seven characters of a hash of the old and new system pr
 
 ## Act 5: test the tests
 
-A suite that stays green when the agent's behavior breaks protects nothing. `attest mutate` measures that on the captured INC-1042 fixture: it makes behavior mutants of the run (a tool call dropped, duplicated or reordered, an argument perturbed, a tool error injected, a world record altered, the output truncated), runs the suite's contracts against each at no model cost, and reports the share it killed. Only behavior is mutated, never source code. See `attest guide mutation` for the operators and the report.
+A suite that stays green when the agent's behavior breaks protects nothing. `attest mutate` measures that on the captured INC-1042 fixture: it makes behavior mutants of the run (a tool call dropped, duplicated or reordered, an argument perturbed, a tool error injected, a world record altered, the output truncated; this fixture's captured reply is empty, so it yields the first six and no `truncate_output` mutant), runs the suite's contracts against each at no model cost, and reports the share it killed. Only behavior is mutated, never source code. See `attest guide mutation` for the operators and the report.
 
 ```bash
 make mutate CHANNEL=edge
@@ -243,6 +243,8 @@ Both fixtures hold the same run, so the numbers match per language:
 | `inject_tool_error` | 0 / 3 | 0 / 3 |
 
 The mutant `duplicate issue_refund (order_id=O-1042)` is INC-1042 replayed on the fixed run: the agent refunds the order twice. It survives the Act 1 tests, whose reply is the same whether the customer was refunded once or twice, and the contracts kill it (`tool_cardinality`, Act 2). `scripts/mutation_report.py` asserts both outcomes for each language and exits 1 otherwise.
+
+The Act 1 score is 0 because almost none of its checks can fail on this fixture: the captured trace's output is `{"message": ""}`, so the `output_contains` checks do not apply, the `output_not_contains` checks hold on an empty reply for every mutant, and the judge checks are skipped (not deterministic).
 
 `mutation.policy.yaml` gates on the score (`min_mutation_score` 0.2, severity `block`). `make mutate` asserts that `attest policy evaluate --policy mutation.policy.yaml --mutation <report>` exits 1 for the Act 1 tests and 0 for all contracts. The 19 survivors are the gap Act 5 leaves visible: `attest mutate` prints a contract that would kill each one that the operator table can express. `make check` runs `make mutate` as `check-mutate`.
 

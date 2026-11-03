@@ -7,8 +7,9 @@ It then checks the behavior contract "issue_refund at most once per order_id".
 
 The agent still double-refunds, so the contract fails and the strict xfail marker turns that
 into an expected failure. The marker makes the test fail the day the bug disappears, until the
-fix removes it. `raises` limits it to attest's failure on this contract, so a setup, engine or agent error
-is a real failure, and a replay miss is never an expected failure whatever the marker says.
+fix removes it. `raises` limits it to attest's failure on this contract, so a setup, engine or
+agent error is a real failure, and a replay miss is never an expected failure whatever the marker
+says.
 """
 
 from __future__ import annotations

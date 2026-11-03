@@ -6,21 +6,18 @@
 // model call. It then checks the effect contract "one refund for O-1042" against the world's
 // final state.
 //
-// The agent still double-refunds, so the contract fails and `it.fails` turns that into an
-// expected failure. `it.fails` makes the test fail the day the bug disappears, until the fix
-// removes it. It cannot tell a contract failure from any other error, so the replay and the
-// first evaluation run in a plain test: a setup, engine, agent or replay error fails there, and
-// only the contract's verdict is expected to fail. A replay miss is never an expected failure.
-// The trace contract on the same incident lives in the reproduction and capture tests.
+// The agent now sends an Idempotency-Key and checks the refund list after a timeout, so the
+// contract passes. The trace contract on the same incident lives in the reproduction and capture
+// tests, which keep the frozen double-refund trace.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OTelAdapter, attestExpect, type ExpectChain, type Trace, type WorldSnapshot } from "@attest-ai/core";
-import { evaluate, inspect, useReplay, useWorld } from "@attest-ai/vitest";
+import { evaluate, useReplay, useWorld } from "@attest-ai/vitest";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { run, settingsFromEnv } from "../../src/agent.js";
 import { writeOtlpJson } from "../../src/otlp-json.js";
 
@@ -59,25 +56,11 @@ function oneRefundForTheOrder(trace: Trace, world: WorldSnapshot): ExpectChain {
 }
 
 describe("INC-1042 replay", () => {
-  let trace: Trace | undefined;
-  let world: WorldSnapshot | undefined;
-
-  it("replays today's agent on the incident request", async () => {
+  it("leaves one refund for the order", async () => {
     const session = await useWorld(worldFile);
 
-    trace = await OTelAdapter.fromOtlp(await replayAgentTrace(incidentRequest.customer_message));
+    const trace = await OTelAdapter.fromOtlp(await replayAgentTrace(incidentRequest.customer_message));
 
-    // inspect() starts the evaluation engine here and never fails on a verdict. This test only
-    // requires that the contract was evaluated (an engine error or not_evaluated fails it);
-    // the verdict is left to the expected-failure test.
-    world = await session.state();
-    const result = await inspect(oneRefundForTheOrder(trace, world));
-    expect(["pass", "hard_fail"]).toContain(result.assertionResults[0]?.status);
-  });
-
-  it.fails("leaves one refund for the order (INC-1042: issue #2)", async () => {
-    if (trace === undefined || world === undefined) throw new Error("the replay test did not produce a trace");
-
-    await evaluate(oneRefundForTheOrder(trace, world));
+    await evaluate(oneRefundForTheOrder(trace, await session.state()));
   });
 });

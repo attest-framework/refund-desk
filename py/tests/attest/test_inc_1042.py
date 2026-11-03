@@ -32,18 +32,18 @@ def contracts() -> ExpectChain:
     )
 
 
-# Status of each contract on the captured incident, in contracts() order.
+# Status of each contract on the captured run of the fixed agent, in contracts() order.
 EXPECTED = [
     ("tools-called", "pass"),
     ("order-lookup_order-before-issue_refund", "pass"),
     ("order-issue_refund-before-notify_customer", "pass"),
     ("cardinality-lookup_order-per-order_id", "pass"),
-    ("cardinality-issue_refund-per-order_id", "hard_fail"),
+    ("cardinality-issue_refund-per-order_id", "pass"),
     ("cardinality-notify_customer-per-order_id", "pass"),
 ]
 
 
-def test_inc_1042_reproduces_incident(attest: AttestEngineFixture) -> None:
+def test_inc_1042_fixed_agent_run_meets_contracts(attest: AttestEngineFixture) -> None:
     result = attest.inspect(contracts())
 
     statuses = [row.status for row in result.assertion_results]

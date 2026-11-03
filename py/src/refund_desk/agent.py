@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -49,6 +50,20 @@ def canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def idempotency_key(order_id: str, amount_cents: int) -> str:
+    """Same derivation as the TS agent: first 16 hex digits of sha256("<order>:<amount>")."""
+    return hashlib.sha256(f"{order_id}:{amount_cents}".encode()).hexdigest()[:16]
+
+
+def committed(refund: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "refund_id": refund["refund_id"],
+        "order_id": refund["order_id"],
+        "amount_cents": refund["amount_cents"],
+        "status": "committed",
+    }
+
+
 class Tools:
     def __init__(self, settings: Settings) -> None:
         self.http = httpx.Client(
@@ -81,24 +96,32 @@ class Tools:
         }
 
     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
-        # No idempotency key: a retry after a timeout is a new refund (INC-1042).
+        # The key derives from the order and the amount, so a retry of the same refund carries the
+        # same key and the payments API answers it with the first refund (INC-1042).
         try:
             response = self.http.post(
                 "/refunds",
                 json={"order_id": order_id, "amount_cents": amount_cents, "reason": reason},
+                headers={"Idempotency-Key": idempotency_key(order_id, amount_cents)},
             )
         except httpx.TimeoutException:
-            return {"error": "payments_timeout", "order_id": order_id}
+            return self.committed_refund(order_id, amount_cents) or {
+                "error": "payments_timeout",
+                "order_id": order_id,
+            }
         if response.status_code in (404, 422):
             return {"error": response.json()["error"], "order_id": order_id}
         response.raise_for_status()
-        refund = response.json()
-        return {
-            "refund_id": refund["refund_id"],
-            "order_id": refund["order_id"],
-            "amount_cents": refund["amount_cents"],
-            "status": "committed",
-        }
+        return committed(response.json())
+
+    def committed_refund(self, order_id: str, amount_cents: int) -> dict[str, Any] | None:
+        """The refund the payments API committed before the timeout, if there is one."""
+        response = self.http.get("/refunds", params={"order_id": order_id})
+        response.raise_for_status()
+        for refund in response.json()["refunds"]:
+            if refund["amount_cents"] == amount_cents:
+                return committed(refund)
+        return None
 
     def notify_customer(self, order_id: str, message: str) -> dict[str, Any]:
         response = self.http.post("/notifications", json={"order_id": order_id, "message": message})

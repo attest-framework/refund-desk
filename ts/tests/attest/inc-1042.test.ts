@@ -24,18 +24,18 @@ function contracts(): ExpectChain {
     .toolCardinality("notify_customer", { per: "order_id", atMost: 1 });
 }
 
-// Status of each contract on the captured incident, in contracts() order.
+// Status of each contract on the captured run of the fixed agent, in contracts() order.
 const EXPECTED: Array<[string, string]> = [
   ["tools-called", "pass"],
   ["order-lookup_order-before-issue_refund", "pass"],
   ["order-issue_refund-before-notify_customer", "pass"],
   ["cardinality-lookup_order-per-order_id", "pass"],
-  ["cardinality-issue_refund-per-order_id", "hard_fail"],
+  ["cardinality-issue_refund-per-order_id", "pass"],
   ["cardinality-notify_customer-per-order_id", "pass"],
 ];
 
 describe("inc-1042", () => {
-  it("reproduces the incident", async () => {
+  it("meets every contract on the fixed agent run", async () => {
     const result = await inspect(contracts());
 
     expect(result.assertionResults.map((row) => row.status)).toEqual(EXPECTED.map(([, s]) => s));

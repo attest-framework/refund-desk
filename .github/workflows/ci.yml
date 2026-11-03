@@ -67,7 +67,7 @@ jobs:
             done
           done
 
-      # Before `make incident`, which regenerates the traces: this checks the committed ones.
+      # Checks the frozen INC-1042 traces committed under incidents/.
       - name: make doctor
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
@@ -113,7 +113,7 @@ jobs:
           name: edge-reports
           path: |
             reports/
-            incidents/INC-1042/trace.*.otlp.json
+            .stack/incident-traces/
           if-no-files-found: warn
 
   # The only job with pull-requests: write. It runs no PR code (no make, install or tests): it
@@ -146,21 +146,7 @@ jobs:
           name: annotate-reports
           path: .
 
-      # The replay reports carry the current agent's expected INC-1042 failure until the fix act
-      # removes the markers, and the policy blocks on any hard failure, so the policy gates the
-      # live reports here (as `make check` does) and the second call, which runs last and so
-      # owns the summary comment, adds the replay reports without a policy.
-      - name: Gate the live reports and annotate
-        uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
-        with:
-          report: |
-            py/attest-report.py.json
-            ts/attest-report.ts.json
-          policy: attest.policy.yaml
-          engine-binary: ${{ steps.attest.outputs.engine-path }}
-
-      - name: Summarize all reports and annotate replay misses
-        if: always()
+      - name: Gate the reports and annotate
         uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
         with:
           report: |
@@ -168,6 +154,7 @@ jobs:
             py/attest-report.replay.py.json
             ts/attest-report.ts.json
             ts/attest-report.replay.ts.json
+          policy: attest.policy.yaml
           engine-binary: ${{ steps.attest.outputs.engine-path }}
 
   released:

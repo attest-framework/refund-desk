@@ -25,6 +25,10 @@ jobs:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # pull-requests: write is for the pr-annotate summary comment; the released job stays read-only.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,6 +84,30 @@ jobs:
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
         run: make incident CHANNEL=edge
+
+      # pr-annotate resolves each row's `file` (relative to the test rootdir) by prefixing the
+      # report's own directory, so the reports go next to the tests that wrote them.
+      - name: Place reports beside their tests
+        if: always()
+        run: |
+          set -eu
+          for lang in py ts; do
+            for f in reports/attest-report."$lang".json reports/attest-report.replay."$lang".json; do
+              if [ -f "$f" ]; then cp "$f" "$lang/"; fi
+            done
+          done
+
+      - name: Annotate the pull request
+        if: always()
+        uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
+        with:
+          report: |
+            py/attest-report.py.json
+            py/attest-report.replay.py.json
+            ts/attest-report.ts.json
+            ts/attest-report.replay.ts.json
+          policy: attest.policy.yaml
+          engine-binary: ${{ steps.attest.outputs.engine-path }}
 
       - name: Upload reports and incident traces
         if: always()

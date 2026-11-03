@@ -27,6 +27,18 @@ TRACE_PROBE := from attest.cli.admin import engine_commands; \
 CAPTURE_PROBE := from attest.cli.admin import engine_commands; \
   from attest.engine_manager import resolve_engine; \
   raise SystemExit(0 if "capture" in (engine_commands(resolve_engine()) or {}) else 3)
+# Exits 3 when the engine the installed SDK resolves has no `replay` command (attest <= rc.2).
+REPLAY_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "replay" in (engine_commands(resolve_engine()) or {}) else 3)
+REPLAY_REQUIRE = @uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || { rc=$$?; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no replay command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  exit $$rc; }
+# The replay run: no provider key besides a placeholder the agent's settings need (the scripted
+# judge key from stack.mk stays: the engine needs one with ATTEST_JUDGE_BASE_URL), strict
+# replay and the egress guard on. A miss fails the test and nothing is sent to a provider.
+REPLAY_ENV := env -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY \
+  OPENAI_API_KEY=replay-needs-no-key ATTEST_REPLAY=strict ATTEST_EGRESS=block
 CAPTURE_NAME := inc-1042
 CAPTURE_DIR := $(CURDIR)/.stack/capture-check
 FIXTURE := tests/attest/fixtures/$(CAPTURE_NAME).attest.json
@@ -44,6 +56,9 @@ CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
   pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py --lang ts --trace-dir $(CAPTURE_TRACES)
+# `--refresh` re-runs the fixture's recorded command from the directory it was captured in.
+REFRESH_ENV := OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1
+REFRESH = cd $(1) && $(REFRESH_ENV) $(if $(filter ts,$(1)),pnpm exec,uv run --no-sync) attest capture --refresh $(CAPTURE_NAME) --yes
 CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
@@ -61,7 +76,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -71,6 +86,7 @@ help:
 	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
+	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -100,12 +116,13 @@ check:
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
 	$(MAKE) --no-print-directory check-reproduction
 	$(MAKE) --no-print-directory check-capture
+	$(MAKE) --no-print-directory check-replay
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
 	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
 	cd py && uv run --no-sync mypy
-	cd py && uv run --no-sync pytest --ignore=tests/attest --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+	cd py && uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
 	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
 
 check-ts:
@@ -128,6 +145,40 @@ check-capture:
 	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no capture command"; \
 	test $$rc -eq 0 || exit $$rc; \
 	$(MAKE) --no-print-directory capture-tests
+
+# The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture, so they
+# need the stack's payments API but call no model. CHANNEL=released skips them until a release
+# with replay is verified; edge requires them.
+check-replay:
+	@rc=0; uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || rc=$$?; \
+	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
+	  echo "skipping Act 3b replay tests: needs attest >= 1.0.0-rc.3"; \
+	  exit 0; \
+	fi; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no replay command"; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory replay-tests
+
+replay-tests:
+	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py
+	cd ts && pnpm exec tsc --noEmit -p tests/replay
+	$(STACK) $(MAKE) --no-print-directory replay-run-py replay-run-ts
+
+replay-run-py:
+	cd py && $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
+	  --attest-strict -rx --attest-report=$(REPORTS)/attest-report.replay.py.json
+
+replay-run-ts:
+	cd ts && $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
+	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
+
+# Acceptance proof: appending a sentence to the system prompt makes strict replay fail in
+# both languages with the miss message. The script restores the prompt on every exit.
+replay-miss:
+	$(REQUIRE_CHANNEL)
+	$(call REPLAY_REQUIRE,replay-miss)
+	mkdir -p $(REPORTS)
+	scripts/replay-miss.sh
 
 capture-tests:
 	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py
@@ -174,11 +225,12 @@ capture:
 	$(call CAPTURE_REQUIRE,capture)
 	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
 
+# Re-record: where the fixture exists, --refresh re-runs the command recorded in it.
 capture-py:
-	$(call CAPTURE_PY,tests/attest/fixtures)
+	if test -f py/$(FIXTURE); then $(call REFRESH,py); else $(call CAPTURE_PY,tests/attest/fixtures); fi
 
 capture-ts:
-	$(call CAPTURE_TS,tests/attest/fixtures)
+	if test -f ts/$(FIXTURE); then $(call REFRESH,ts); else $(call CAPTURE_TS,tests/attest/fixtures); fi
 
 # Re-captures both languages into a temporary directory and holds the committed fixtures to:
 # byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.

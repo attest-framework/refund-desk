@@ -32,6 +32,7 @@ make check      # lint, type-check and run the attest tests in both languages
 | `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
 | `incidents/INC-1042/` | The incident request, both OTLP/JSON traces, their expected span structure and a corrected trace with one refund |
 | `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
+| `py/tests/replay/`, `ts/tests/replay/` | The INC-1042 replay tests: today's agent against the captured fixture, under a strict expected-failure marker (Act 3b) |
 | `stack.mk` | Ports, URLs and the planted fake `OPENAI_API_KEY` the scripted server ignores |
 
 `make incident` and `make check` start both servers through `scripts/stack.py` and stop them afterwards.
@@ -79,7 +80,7 @@ The traces in `incidents/INC-1042/` record those tool calls. Later acts use them
 | 1 | The incident happens; output-only tests stay green |
 | 2 | A behavior contract over the frozen trace detects the double refund |
 | 3a | `attest capture` turns the incident run into a verified fixture with the secrets removed |
-| 3b | Replay: the real agent code runs against the fixture with zero model calls and the simulated world shows two refunds |
+| 3b | Replay: the real agent code runs against the fixture with zero model calls, and the double refund reproduces inside a strict expected-failure marker |
 | 4 | The fix merges with zero live model calls; a regression pull request is blocked with an annotation |
 | 5 | A coding agent drafts the contract; mutation testing scores it |
 | 6 | Identical verdicts in TypeScript; a viewer artifact on the regression pull request |
@@ -123,13 +124,13 @@ make capture CHANNEL=edge          # one capture per language, with the stack up
 make capture-check CHANNEL=edge    # re-capture, compare bytes, check redaction and the trace
 ```
 
-`make capture` runs, in `py/` and in `ts/`:
+`make capture` runs, in `py/` and in `ts/`, where the fixture does not exist yet:
 
 ```bash
 attest capture --name inc-1042 --expect-fail -- <the incident command for that language>
 ```
 
-`OPENAI_BASE_URL` in the capture's environment is the scripted model server, so the proxy forwards to it; the agent gets the proxy's URL instead. Each agent builds its client from `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and exports its spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when capture sets it, next to the OTLP/JSON file. The fixtures land in `py/tests/attest/fixtures/inc-1042.attest.json` and `ts/tests/attest/fixtures/inc-1042.attest.json`; capture drafts `py/tests/attest/test_inc_1042.py` and `ts/tests/attest/inc-1042.test.ts` next to them. Those two files are committed reproduction tests: `inspect()` runs the drafted contracts over the fixture's trace, and the test passes because `cardinality-issue_refund-per-order_id` reports the double refund. `make check` runs them outside the policy report, since a reproduction's hard failure is expected.
+Where the fixture exists, `make capture` re-records it with `attest capture --refresh inc-1042 --yes`, which re-runs the command recorded in the fixture and overwrites it. `OPENAI_BASE_URL` in the capture's environment is the scripted model server, so the proxy forwards to it; the agent gets the proxy's URL instead. Each agent builds its client from `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and exports its spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when capture sets it, next to the OTLP/JSON file. The fixtures land in `py/tests/attest/fixtures/inc-1042.attest.json` and `ts/tests/attest/fixtures/inc-1042.attest.json`; capture drafts `py/tests/attest/test_inc_1042.py` and `ts/tests/attest/inc-1042.test.ts` next to them. Those two files are committed reproduction tests: `inspect()` runs the drafted contracts over the fixture's trace, and the test passes because `cardinality-issue_refund-per-order_id` reports the double refund. `make check` runs them outside the policy report, since a reproduction's hard failure is expected.
 
 ```text
 capture inc-1042: tests/attest/fixtures/inc-1042.attest.json
@@ -167,6 +168,46 @@ The email is `{{email_1}}` in every place it appears. The key is nowhere in the 
 The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section is reserved for the payments state replay will simulate. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
 
 Capture ships after attest 1.0.0-rc.2, so `make capture` and `make capture-check` run on the edge channel. On `CHANNEL=released` they stop with `needs attest >= 1.0.0-rc.3` until a release with the command is verified.
+
+## Act 3b: replay
+
+Capture recorded the model's side of the incident. Replay serves it back: the tests run today's agent code (`refund_desk.agent.run`, `ts/src/agent.ts` `run`) on the INC-1042 request against the fake payments API with the `inc-1042` fault script, exactly as `make incident` does, while a local proxy answers every model request from `tests/attest/fixtures/inc-1042.attest.json`. No model is called and no key is needed.
+
+```bash
+make setup CHANNEL=edge
+make check CHANNEL=edge            # runs the replay tests last, in both languages
+make replay-miss CHANNEL=edge      # the miss message, below
+```
+
+`make check` runs both replay tests with strict replay and the egress guard on, with no provider key in the environment (the agent's settings need a non-empty `OPENAI_API_KEY`, so the run sets the placeholder `replay-needs-no-key`):
+
+```bash
+pytest tests/replay --attest-replay=strict --attest-egress=block
+ATTEST_REPLAY=strict ATTEST_EGRESS=block vitest run --config tests/replay/vitest.config.ts
+```
+
+```text
+XFAIL tests/replay/test_inc_1042_replay.py::test_inc_1042_replay_issues_one_refund_per_order - INC-1042: issue #2
+attest replay: 5 replayed · 0 live model calls · $0.00
+```
+
+Each test asserts the behavior contract "issue_refund at most once per order_id" with `evaluate()` on the trace of the replayed run. The agent still double-refunds, so the assertion fails.
+
+### The strict marker
+
+The two tests carry a strict expected-failure marker: `pytest.mark.xfail(strict=True, raises=…, reason="INC-1042: issue #2")` and Vitest `it.fails`. The failure is the bug that issue #2 tracks, and the markers keep CI green while it exists. They are strict so the suite turns red the day the bug disappears, which forces whoever fixes the agent to remove them: the fix act does. The marker covers only the contract's verdict: in Python `raises` matches attest's failure message for this contract, so an engine that fails to start or an agent that crashes is a real failure, and in TypeScript the replay and the first `inspect()` of the contract run in a plain test, so the same errors fail there. A replay miss is never an expected failure either: strict replay fails the test whatever marker it carries.
+
+Reproduction tests (Act 2) and these tests answer different questions. The reproduction tests read frozen traces and stay green for good: they prove the contract catches the bug. The replay tests run the current agent: they carry the markers until the fix.
+
+### A changed prompt is a replay miss
+
+A request matches a recording when its model, parameters, prompt and tool schemas are equal. Change any of them and strict replay fails the test instead of guessing. `make replay-miss` appends one sentence to `agent-spec/system-prompt.txt`, runs both replay tests and requires each to fail with the message below, then restores the prompt. CI runs it on the edge job.
+
+```text
+replay miss: system prompt changed (hash e1b7b67→5305126); re-record with `attest capture --refresh inc-1042`
+```
+
+The hashes are the first seven characters of a hash of the old and new system prompt, so the log shows that it changed without showing the text. After an intended change, `make capture CHANNEL=edge` re-records both fixtures. Replay ships after attest 1.0.0-rc.2: on `CHANNEL=released`, `make check` prints `skipping Act 3b replay tests: needs attest >= 1.0.0-rc.3` and exits 0.
 
 ## Trace doctor
 

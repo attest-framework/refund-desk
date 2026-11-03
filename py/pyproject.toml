@@ -40,8 +40,8 @@ select = ["E", "F", "I", "N", "W", "UP", "B"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
-# Type-checked by `make check-capture`: it needs an attest with capture.
-exclude = ["tests/attest/"]
+# Type-checked by `make check-capture` and `make check-replay`: they need an attest with capture and replay.
+exclude = ["tests/attest/", "tests/replay/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

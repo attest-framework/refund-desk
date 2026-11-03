@@ -7,7 +7,7 @@ It then checks the behavior contract "issue_refund at most once per order_id".
 
 The agent still double-refunds, so the contract fails and the strict xfail marker turns that
 into an expected failure. The marker makes the test fail the day the bug disappears, until the
-fix removes it. `raises` limits it to attest's own assertion failure, so a setup or agent error
+fix removes it. `raises` limits it to attest's failure on this contract, so a setup, engine or agent error
 is a real failure, and a replay miss is never an expected failure whatever the marker says.
 """
 
@@ -46,7 +46,13 @@ def replay_agent_trace(
         provider.shutdown()
 
 
-@pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="INC-1042: issue #2")
+@pytest.mark.xfail(
+    strict=True,
+    # Only attest's own failure on this contract counts: an engine that fails to start also
+    # raises pytest.fail.Exception, in the attest fixture's setup, with another message.
+    raises=pytest.RaisesExc(pytest.fail.Exception, match=r"issue_refund called 2×"),
+    reason="INC-1042: issue #2",
+)
 def test_inc_1042_replay_issues_one_refund_per_order(
     attest: AttestEngineFixture,
     attest_replay: Callable[..., ReplaySession],

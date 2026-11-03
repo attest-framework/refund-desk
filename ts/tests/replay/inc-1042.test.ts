@@ -7,14 +7,14 @@
 //
 // The agent still double-refunds, so the contract fails and `it.fails` turns that into an
 // expected failure. `it.fails` makes the test fail the day the bug disappears, until the fix
-// removes it. It cannot tell a contract failure from any other error, so the replay runs in its
-// own plain test: a setup, agent or replay error fails there, and only the contract is expected
-// to fail. A replay miss is never an expected failure.
+// removes it. It cannot tell a contract failure from any other error, so the replay and the
+// first evaluation run in a plain test: a setup, engine, agent or replay error fails there, and
+// only the contract's verdict is expected to fail. A replay miss is never an expected failure.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OTelAdapter, attestExpect, type Trace } from "@attest-ai/core";
-import { evaluate, useReplay } from "@attest-ai/vitest";
+import { OTelAdapter, attestExpect, type ExpectChain, type Trace } from "@attest-ai/core";
+import { evaluate, inspect, useReplay } from "@attest-ai/vitest";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { describe, expect, it } from "vitest";
@@ -58,6 +58,10 @@ async function replayAgentTrace(message: string): Promise<string> {
   }
 }
 
+function oneRefundPerOrder(trace: Trace): ExpectChain {
+  return attestExpect(trace).toolCardinality("issue_refund", { per: "order_id", atMost: 1 });
+}
+
 describe("INC-1042 replay", () => {
   let trace: Trace | undefined;
 
@@ -66,12 +70,15 @@ describe("INC-1042 replay", () => {
 
     trace = await OTelAdapter.fromOtlp(await replayAgentTrace(incidentRequest.customer_message));
 
-    expect(trace.steps.some((step) => step.type === "tool_call" && step.name === "issue_refund")).toBe(true);
+    // inspect() starts the evaluation engine here and never fails on a verdict, so an engine
+    // error fails this test; the contract's verdict is left to the expected-failure test.
+    const result = await inspect(oneRefundPerOrder(trace));
+    expect(result.assertionResults.map((row) => row.status)).toContain("hard_fail");
   });
 
   it.fails("issues one refund per order (INC-1042: issue #2)", async () => {
     if (trace === undefined) throw new Error("the replay test did not produce a trace");
 
-    await evaluate(attestExpect(trace).toolCardinality("issue_refund", { per: "order_id", atMost: 1 }));
+    await evaluate(oneRefundPerOrder(trace));
   });
 });

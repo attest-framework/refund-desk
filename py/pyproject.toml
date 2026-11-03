@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.28",
     "openai>=1.109",
     "opentelemetry-api>=1.38",
+    "opentelemetry-exporter-otlp-proto-http>=1.38",
     "opentelemetry-sdk>=1.38",
 ]
 
@@ -39,6 +40,8 @@ select = ["E", "F", "I", "N", "W", "UP", "B"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+# Type-checked by `make check-capture`: it needs an attest with capture.
+exclude = ["tests/attest/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

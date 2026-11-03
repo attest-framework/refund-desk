@@ -31,7 +31,8 @@ make check      # lint, type-check and run the attest tests in both languages
 | `payments/` | Fake payments API with an in-memory ledger and fault scripts (`payments/faults/`) |
 | `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
 | `incidents/INC-1042/` | The incident request, both OTLP/JSON traces, their expected span structure and a corrected trace with one refund |
-| `stack.mk` | Ports, URLs and the placeholder keys the scripted server ignores |
+| `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
+| `stack.mk` | Ports, URLs and the planted fake `OPENAI_API_KEY` the scripted server ignores |
 
 `make incident` and `make check` start both servers through `scripts/stack.py` and stop them afterwards.
 
@@ -53,7 +54,7 @@ make setup CHANNEL=edge && make check CHANNEL=edge
 
 ### Pointing the agent at a real model
 
-The agents read `MODEL_BASE_URL`, `MODEL_NAME` and `MODEL_API_KEY` from the environment, and any exported value overrides `stack.mk`. Any OpenAI-compatible chat-completions endpoint works. The repository never does this: CI and every `make` target use the scripted server, and a real model will not follow the incident script.
+The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the environment, and any exported value overrides `stack.mk`. Any OpenAI-compatible chat-completions endpoint works. The repository never does this: CI and every `make` target use the scripted server, and a real model will not follow the incident script.
 
 ## Act 1: the incident
 
@@ -77,7 +78,8 @@ The traces in `incidents/INC-1042/` record those tool calls. Later acts use them
 |---|---|
 | 1 | The incident happens; output-only tests stay green |
 | 2 | A behavior contract over the frozen trace detects the double refund |
-| 3 | Captured fixture: the real agent replays with zero model calls and the simulated world shows two refunds |
+| 3a | `attest capture` turns the incident run into a verified fixture with the secrets removed |
+| 3b | Replay: the real agent code runs against the fixture with zero model calls and the simulated world shows two refunds |
 | 4 | The fix merges with zero live model calls; a regression pull request is blocked with an annotation |
 | 5 | A coding agent drafts the contract; mutation testing scores it |
 | 6 | Identical verdicts in TypeScript; a viewer artifact on the regression pull request |
@@ -110,6 +112,61 @@ The output-only tests missed this because the reply never changed: both refunds 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
 `make check` runs them after the agent tests. Behavior contracts ship in attest 1.0.0-rc.2, so they run on the edge channel (`make check CHANNEL=edge`, and in the edge CI job). On `CHANNEL=released`, `make check` prints `skipping the INC-1042 reproduction tests` until a release with contracts is verified; on `CHANNEL=edge`, an attest without them fails `make check`.
+
+## Act 3a: capture
+
+Act 2 read a frozen trace. `attest capture` makes the run itself the input: it runs the incident, records the trace and every model call, removes secrets, templates volatile values, drafts contracts and checks them against the run.
+
+```bash
+make setup CHANNEL=edge
+make capture CHANNEL=edge          # one capture per language, with the stack up
+make capture-check CHANNEL=edge    # re-capture, compare bytes, check redaction and the trace
+```
+
+`make capture` runs, in `py/` and in `ts/`:
+
+```bash
+attest capture --name inc-1042 --expect-fail -- <the incident command for that language>
+```
+
+`OPENAI_BASE_URL` in the capture's environment is the scripted model server, so the proxy forwards to it; the agent gets the proxy's URL instead. Each agent builds its client from `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and exports its spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when capture sets it, next to the OTLP/JSON file. The fixtures land in `py/tests/attest/fixtures/inc-1042.attest.json` and `ts/tests/attest/fixtures/inc-1042.attest.json`; capture drafts `py/tests/attest/test_inc_1042.py` and `ts/tests/attest/inc-1042.test.ts` next to them. Those two files are committed reproduction tests: `inspect()` runs the drafted contracts over the fixture's trace, and the test passes because `cardinality-issue_refund-per-order_id` reports the double refund. `make check` runs them outside the policy report, since a reproduction's hard failure is expected.
+
+```text
+capture inc-1042: tests/attest/fixtures/inc-1042.attest.json
+  trace: 5 llm_call, 4 tool_call; trace check OK
+  exchanges: 5 recorded (openai chat_completions ×5)
+  contracts:
+    pass       tools-called                               trajectory (superset) matches [lookup_order issue_refund notify_customer]
+    pass       cardinality-lookup_order-per-order_id      lookup_order within max 1 for each of 1 order_id value(s)
+    hard_fail  cardinality-issue_refund-per-order_id      issue_refund called 2× for order_id=O-1042 (max 1)
+    ...
+  verified: incident reproduction; expected failure: cardinality-issue_refund-per-order_id
+```
+
+The demo plants two secrets so the redaction has something to catch: a fake key in `OPENAI_API_KEY` (`stack.mk`, shaped like a real `sk-` key) and a customer email in `incidents/INC-1042/request.json`. Excerpt of the fixture:
+
+```json
+"verification": { "expect_fail": true, "expected_failures": ["cardinality-issue_refund-per-order_id"], "verified": true },
+"exchanges": [{
+  "api": "chat_completions", "path": "/chat/completions", "provider": "openai",
+  "request": { "messages": [ ..., { "content": "Hi, {{email_1}}: O-1042 came damaged. Refund.", "role": "user" } ] },
+  "key": { "model": "refund-desk-scripted", "prompt_hash": "sha256:1bf2c172…", "tool_schema_hash": "sha256:85273f44…" }
+}],
+"world": null
+```
+
+The email is `{{email_1}}` in every place it appears. The key is nowhere in the fixture: request headers, which carry it, are never recorded, and any other place it reached would be `[redacted]`. `make capture-check` holds that to account:
+
+| Check | Expected |
+|---|---|
+| re-capture both languages into a temporary directory and `cmp` with the committed fixtures | byte-identical |
+| `attest capture --check-redaction` on each committed fixture | `clean`, with the planted key in the environment |
+| `grep` each fixture for the planted key and the email | 0 hits |
+| `attest trace check` on each fixture | exit 0 |
+
+The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section is reserved for the payments state replay will simulate. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
+
+Capture ships after attest 1.0.0-rc.2, so `make capture` and `make capture-check` run on the edge channel. On `CHANNEL=released` they stop with `needs attest >= 1.0.0-rc.3` until a release with the command is verified.
 
 ## Trace doctor
 

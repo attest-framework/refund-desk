@@ -62,9 +62,9 @@ export function settingsFromEnv(): Settings {
     return value;
   };
   return {
-    modelBaseUrl: required("MODEL_BASE_URL"),
+    modelBaseUrl: required("OPENAI_BASE_URL"),
     modelName: required("MODEL_NAME"),
-    modelApiKey: required("MODEL_API_KEY"),
+    modelApiKey: required("OPENAI_API_KEY"),
     paymentsBaseUrl: required("PAYMENTS_BASE_URL"),
     paymentsTimeoutMs: positiveInteger("PAYMENTS_TIMEOUT_MS", required("PAYMENTS_TIMEOUT_MS")),
   };
@@ -168,6 +168,15 @@ class Tools {
   }
 }
 
+/**
+ * One clock for every span boundary, in epoch milliseconds. The SDK's own default clock
+ * rounds each span's start to a millisecond but not its end, so a child can end after
+ * its parent and the trace check warns that it runs outside it.
+ */
+function now(): number {
+  return performance.timeOrigin + performance.now();
+}
+
 /** Mark a span failed the way Python's start_as_current_span does on an exception. */
 function failSpan(span: Span, error: unknown): void {
   span.recordException(error instanceof Error ? error : String(error));
@@ -183,6 +192,7 @@ export async function run(settings: Settings, customerMessage: string, tracer: T
     { role: "user", content: customerMessage },
   ];
   const root = tracer.startSpan("invoke_agent refund-desk", {
+    startTime: now(),
     attributes: { "gen_ai.operation.name": "invoke_agent", "gen_ai.agent.name": "refund-desk" },
   });
   const rootContext = trace.setSpan(context.active(), root);
@@ -207,7 +217,7 @@ export async function run(settings: Settings, customerMessage: string, tracer: T
     failSpan(root, error);
     throw error;
   } finally {
-    root.end();
+    root.end(now());
   }
 }
 
@@ -218,7 +228,7 @@ async function chat(
   model: string,
   messages: ChatCompletionMessageParam[],
 ): Promise<ChatCompletionAssistantMessageParam> {
-  const span = tracer.startSpan(`chat ${model}`, { kind: SpanKind.CLIENT }, parent);
+  const span = tracer.startSpan(`chat ${model}`, { kind: SpanKind.CLIENT, startTime: now() }, parent);
   try {
     span.setAttribute("gen_ai.operation.name", "chat");
     span.setAttribute("gen_ai.request.model", model);
@@ -250,7 +260,7 @@ async function chat(
     failSpan(span, error);
     throw error;
   } finally {
-    span.end();
+    span.end(now());
   }
 }
 
@@ -261,7 +271,7 @@ async function executeTool(
   call: { id: string; function: { name: string; arguments: string } },
 ): Promise<string> {
   const { name, arguments: args } = call.function;
-  const span = tracer.startSpan(`execute_tool ${name}`, {}, parent);
+  const span = tracer.startSpan(`execute_tool ${name}`, { startTime: now() }, parent);
   try {
     span.setAttribute("gen_ai.operation.name", "execute_tool");
     span.setAttribute("gen_ai.tool.name", name);
@@ -279,6 +289,6 @@ async function executeTool(
     failSpan(span, error);
     throw error;
   } finally {
-    span.end();
+    span.end(now());
   }
 }

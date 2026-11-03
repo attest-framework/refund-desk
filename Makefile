@@ -23,6 +23,30 @@ TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp
 TRACE_PROBE := from attest.cli.admin import engine_commands; \
   from attest.engine_manager import resolve_engine; \
   raise SystemExit(0 if "trace" in (engine_commands(resolve_engine()) or {}) else 3)
+# Exits 3 when the engine the installed SDK resolves has no `capture` command (attest <= rc.2).
+CAPTURE_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "capture" in (engine_commands(resolve_engine()) or {}) else 3)
+CAPTURE_NAME := inc-1042
+CAPTURE_DIR := $(CURDIR)/.stack/capture-check
+FIXTURE := tests/attest/fixtures/$(CAPTURE_NAME).attest.json
+# Planted by the demo: the fake key in stack.mk and the customer email in request.json.
+PLANTED_EMAIL := jane.doe@example.com
+# The traces under capture go to .stack/; the incident traces in incidents/ stay frozen.
+# Relative path: the capture records its command line, and the fixture must not hold
+# the checkout's location.
+CAPTURE_TRACES := ../.stack/capture-traces
+# One language's incident under `attest capture`. The capture's own environment points the
+# proxy upstream at the scripted model server; the child gets the proxy URL instead.
+CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
+  uv run --no-sync attest capture --name $(CAPTURE_NAME) --expect-fail --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py --lang py --trace-dir $(CAPTURE_TRACES)
+CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
+  pnpm exec attest capture --name $(CAPTURE_NAME) --expect-fail --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py --lang ts --trace-dir $(CAPTURE_TRACES)
+CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  exit $$rc; }
 # Exit 3 when the installed SDKs have no behavior contracts (attest <= rc.1).
 CONTRACT_PROBE_PY := from attest import ExpectChain; \
   raise SystemExit(0 if hasattr(ExpectChain, "tool_cardinality") else 3)
@@ -37,7 +61,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction doctor flaky edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -45,6 +69,8 @@ help:
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
+	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
+	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -73,12 +99,13 @@ check:
 	mkdir -p $(REPORTS)
 	$(STACK) $(MAKE) --no-print-directory check-py check-ts
 	$(MAKE) --no-print-directory check-reproduction
+	$(MAKE) --no-print-directory check-capture
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
 	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
 	cd py && uv run --no-sync mypy
-	cd py && uv run --no-sync pytest --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+	cd py && uv run --no-sync pytest --ignore=tests/attest --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
 	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
 
 check-ts:
@@ -86,6 +113,27 @@ check-ts:
 	cd ts && pnpm exec tsc --noEmit
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
+
+# The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
+# They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
+# vitest `exclude`) and run here, outside the policy report: each test passes because its
+# contract reports the double refund, and that expected hard failure would trip the policy.
+# CHANNEL=released skips them until a release with capture is verified; edge requires them.
+check-capture:
+	@rc=0; uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || rc=$$?; \
+	if [ $$rc -eq 3 ] && [ "$(CHANNEL)" = released ]; then \
+	  echo "skipping Act 3a capture tests: needs attest >= 1.0.0-rc.3"; \
+	  exit 0; \
+	fi; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no capture command"; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory capture-tests
+
+capture-tests:
+	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py
+	cd py && uv run --no-sync pytest tests/attest --attest-strict
+	cd ts && pnpm exec tsc --noEmit -p tests/attest
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
 # CHANNEL=released skips them while its attest has no behavior contracts; edge requires them.
@@ -121,6 +169,46 @@ flaky:
 	  test $$rc -ne 3 || echo >&2 "make flaky needs attest >= 1.0.0-rc.2: the attest-ai on CHANNEL=$(CHANNEL) has no --attest-trials. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make flaky CHANNEL=edge"; \
 	  exit $$rc; }
 
+capture:
+	$(REQUIRE_CHANNEL)
+	$(call CAPTURE_REQUIRE,capture)
+	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
+
+capture-py:
+	$(call CAPTURE_PY,tests/attest/fixtures)
+
+capture-ts:
+	$(call CAPTURE_TS,tests/attest/fixtures)
+
+# Re-captures both languages into a temporary directory and holds the committed fixtures to:
+# byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.
+capture-check:
+	$(REQUIRE_CHANNEL)
+	$(call CAPTURE_REQUIRE,capture-check)
+	rm -rf $(CAPTURE_DIR)
+	$(STACK) $(MAKE) --no-print-directory recapture-py recapture-ts
+	cmp py/$(FIXTURE) $(CAPTURE_DIR)/py/$(CAPTURE_NAME).attest.json
+	cmp ts/$(FIXTURE) $(CAPTURE_DIR)/ts/$(CAPTURE_NAME).attest.json
+	@shasum -a 256 py/$(FIXTURE) ts/$(FIXTURE)
+	cd py && uv run --no-sync attest capture --check-redaction $(FIXTURE)
+	cd ts && pnpm exec attest capture --check-redaction $(FIXTURE)
+	@status=0; for fixture in py/$(FIXTURE) ts/$(FIXTURE); do \
+	  for planted in key email; do \
+	    case $$planted in key) value='$(OPENAI_API_KEY)';; email) value='$(PLANTED_EMAIL)';; esac; \
+	    hits=$$(grep -cF -- "$$value" "$$fixture" || true); \
+	    echo "$$fixture: $$hits hits for the planted $$planted"; \
+	    test "$$hits" -eq 0 || status=1; \
+	  done; \
+	done; exit $$status
+	cd py && uv run --no-sync attest trace check $(FIXTURE)
+	cd ts && pnpm exec attest trace check $(FIXTURE)
+
+recapture-py:
+	$(call CAPTURE_PY,$(CAPTURE_DIR)/py)
+
+recapture-ts:
+	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts)
+
 edge-artifacts:
 	@test -n "$(ATTEST_SRC)" || { echo "usage: make edge-artifacts ATTEST_SRC=<attest checkout>"; exit 1; }
 	mkdir -p .attest-edge/npm
@@ -138,3 +226,4 @@ edge-artifacts:
 
 clean:
 	rm -rf .stack .attest-edge .channel reports py/.venv ts/node_modules
+

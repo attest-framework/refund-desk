@@ -36,9 +36,9 @@ class Settings:
             return value
 
         return cls(
-            model_base_url=required("MODEL_BASE_URL"),
+            model_base_url=required("OPENAI_BASE_URL"),
             model_name=required("MODEL_NAME"),
-            model_api_key=required("MODEL_API_KEY"),
+            model_api_key=required("OPENAI_API_KEY"),
             payments_base_url=required("PAYMENTS_BASE_URL"),
             payments_timeout_s=int(required("PAYMENTS_TIMEOUT_MS")) / 1000,
         )

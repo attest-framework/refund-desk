@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "attest": {
+      "command": "attest",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

@@ -11,8 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from attest import Agent, AgentResult, TraceBuilder, expect
-from attest.adapters.otel import OTelAdapter
+from attest import Agent, AgentResult, OTelAdapter, TraceBuilder, expect
 from attest.plugin import AttestEngineFixture
 from attest.world import WorldSession
 from opentelemetry import trace
@@ -40,9 +39,13 @@ def refund_desk(
         exporter = InMemorySpanExporter()
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(exporter))
-        message = run(settings, customer_message, provider.get_tracer("refund-desk"))
-        for step in OTelAdapter.from_spans(exporter.get_finished_spans(), "refund-desk").steps:
-            builder.add_step(step)
+        try:
+            message = run(settings, customer_message, provider.get_tracer("refund-desk"))
+            # Before shutdown: the in-memory exporter drops its spans when it shuts down.
+            for step in OTelAdapter.from_spans(exporter.get_finished_spans(), "refund-desk").steps:
+                builder.add_step(step)
+        finally:
+            provider.shutdown()
         return {"message": message}
 
     return Agent("refund-desk", fn=call).run(customer_message=customer_message)

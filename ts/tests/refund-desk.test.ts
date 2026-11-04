@@ -36,10 +36,15 @@ async function refundDesk(customerMessage: string, recordSpans = false): Promise
     }
     const exporter = new InMemorySpanExporter();
     const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
-    const message = await run(settingsFromEnv(), customerMessage, provider.getTracer("refund-desk"));
-    const recorded = await OTelAdapter.fromSpans(exporter.getFinishedSpans(), "refund-desk");
-    for (const step of recorded.steps) builder.addStep(step);
-    return { message };
+    try {
+      const message = await run(settingsFromEnv(), customerMessage, provider.getTracer("refund-desk"));
+      // Before shutdown: the in-memory exporter drops its spans when it shuts down.
+      const recorded = await OTelAdapter.fromSpans(exporter.getFinishedSpans(), "refund-desk");
+      for (const step of recorded.steps) builder.addStep(step);
+      return { message };
+    } finally {
+      await provider.shutdown();
+    }
   });
   return agent.arun({ customer_message: customerMessage });
 }

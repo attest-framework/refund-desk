@@ -1,7 +1,8 @@
 """Prove verdict_parity.py bites: small recording/report pairs, no real suite involved.
 
-Identical pairs must pass; a differing status, a spec in one language only and a stale
-allowlist entry must each fail. Exits 1 when the script misses any of them.
+Identical pairs must pass; a differing status, swapped verdicts of one spec on two inputs, a
+spec in one language only and a stale allowlist entry must each fail. Exits 1 when the script
+misses any of them.
 """
 
 from __future__ import annotations
@@ -19,25 +20,32 @@ import verdict_parity
 
 CARDINALITY = {"check": "tool_cardinality", "tool": "issue_refund", "per": "order_id", "max": 1}
 ORDER = {"check": "tool_order", "before": "lookup_order", "after": "issue_refund"}
+TWICE = "issue_refund called 2x for order_id=O-1042 (max 1)"
+ONCE = "issue_refund within max 1 for each of 1 order_id value(s)"
+
+# (assertion_id, spec, status, explanation)
+Row = tuple[str, dict[str, Any], str, str]
 
 
-def write(directory: Path, rows: list[tuple[str, dict[str, Any], str]]) -> Path:
-    """One recording and one report; each row is (assertion_id, spec, status)."""
+def write(directory: Path, rows: list[Row]) -> Path:
     directory.mkdir(parents=True)
     records = [
-        {"test_id": "t", "assertion": {"assertion_id": i, "type": "trace", "spec": spec}}
-        for i, spec, _ in rows
+        {
+            "test_id": f"{directory.name}::t{n}",
+            "assertion": {"assertion_id": i, "type": "trace", "spec": spec},
+        }
+        for n, (i, spec, _, _) in enumerate(rows)
     ]
     (directory / "contracts-1-a.ndjson").write_text("\n".join(map(json.dumps, records)) + "\n")
-    results = [{"assertion_id": i, "status": status} for i, _, status in rows]
+    results = [
+        {"assertion_id": i, "status": status, "explanation": why} for i, _, status, why in rows
+    ]
     (directory / "report.json").write_text(json.dumps({"results": results}))
     return directory
 
 
 def run(
-    py: list[tuple[str, dict[str, Any], str]],
-    ts: list[tuple[str, dict[str, Any], str]],
-    allowlist: list[dict[str, Any]] | None = None,
+    py: list[Row], ts: list[Row], allowlist: list[dict[str, Any]] | None = None
 ) -> tuple[int, str]:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -52,29 +60,55 @@ def run(
 
 
 def main() -> int:
-    ok = ("a1", CARDINALITY, "pass")
+    passed: Row = ("a1", CARDINALITY, "pass", ONCE)
+    failed_run: Row = ("a2", CARDINALITY, "hard_fail", TWICE)
     cases: list[tuple[str, Callable[[], tuple[int, str]], int]] = [
-        ("identical", lambda: run([ok], [("b1", CARDINALITY, "pass")]), 0),
-        ("different status", lambda: run([ok], [("b1", CARDINALITY, "hard_fail")]), 1),
+        ("identical", lambda: run([passed], [("b1", CARDINALITY, "pass", ONCE)]), 0),
         (
-            "one language only",
-            lambda: run([ok, ("a2", ORDER, "pass")], [("b1", CARDINALITY, "pass")]),
+            "same spec on two inputs, same verdicts",
+            lambda: run(
+                [passed, failed_run],
+                [("b2", CARDINALITY, "hard_fail", TWICE), ("b1", CARDINALITY, "pass", ONCE)],
+            ),
+            0,
+        ),
+        ("different status", lambda: run([passed], [("b1", CARDINALITY, "hard_fail", ONCE)]), 1),
+        (
+            "swapped verdicts of one spec on two inputs",
+            lambda: run(
+                [passed, failed_run],
+                [("b1", CARDINALITY, "hard_fail", ONCE), ("b2", CARDINALITY, "pass", TWICE)],
+            ),
             1,
         ),
         (
-            "allowlisted difference",
+            "one language only",
+            lambda: run([passed, ("a3", ORDER, "pass", "ok")], [("b1", CARDINALITY, "pass", ONCE)]),
+            1,
+        ),
+        (
+            "allowlisted difference by spec",
             lambda: run(
-                [ok],
-                [("b1", CARDINALITY, "hard_fail")],
+                [passed],
+                [("b1", CARDINALITY, "hard_fail", ONCE)],
                 [{"type": "trace", "spec_contains": "issue_refund", "reason": "selftest"}],
+            ),
+            0,
+        ),
+        (
+            "allowlisted difference by one language's test id",
+            lambda: run(
+                [passed],
+                [("b1", CARDINALITY, "hard_fail", ONCE)],
+                [{"type": "trace", "test_id": "py::t0", "reason": "selftest"}],
             ),
             0,
         ),
         (
             "stale allowlist entry",
             lambda: run(
-                [ok],
-                [("b1", CARDINALITY, "pass")],
+                [passed],
+                [("b1", CARDINALITY, "pass", ONCE)],
                 [{"type": "trace", "spec_contains": "nothing", "reason": "selftest"}],
             ),
             1,

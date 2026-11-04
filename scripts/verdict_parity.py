@@ -3,14 +3,18 @@
 Each language directory holds the specs the engine evaluated (`contracts-*.ndjson`, written
 under ATTEST_CONTRACTS_DIR) and the report-v2 files of the runs that evaluated them
 (`report*.json`). A spec joins to its report row by assertion_id. Verdicts are compared per
-(type, canonical spec): the sorted statuses of every evaluation of that spec in each language.
+(type, canonical spec, evidence): the sorted statuses of every evaluation of that spec in each
+language. Evidence is the engine's explanation on the report row. One spec runs against several
+inputs (the incident traces and the corrected one), and the explanation, written by the engine
+from the evaluated input, keeps a verdict from being matched with another input's verdict.
 Canonical is sorted-key JSON with an effect spec's embedded world snapshot removed, because
 snapshots differ per run, and with null-valued keys removed, because the Python SDK writes an
 unset optional field (a judge's `model`) as null where the TypeScript SDK omits it.
 
 Exits 1 on a spec whose statuses differ, a spec evaluated in one language only, a recording
 without a report row, a report row without a recording, or an allowlist entry that matches
-nothing. An allowlist entry is `{"type": T, "spec_contains": S | "test_id": ID, "reason": R}`.
+nothing. An allowlist entry is `{"type": T, "spec_contains": S | "test_id": ID, "reason": R}`; an
+entry that matches an evaluation in either language exempts that spec and evidence in both.
 
 usage: verdict_parity.py [--allowlist FILE] <py-dir> <ts-dir>
 """
@@ -24,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 LANGUAGES = ("py", "ts")
-Key = tuple[str, str]
+Key = tuple[str, str, str]
 
 
 class ParityError(Exception):
@@ -37,23 +41,24 @@ def canonical(spec: dict[str, Any]) -> str:
     )
 
 
-def report_statuses(directory: Path) -> dict[str, str]:
-    """assertion_id -> status over every report in the directory."""
-    statuses: dict[str, str] = {}
+def report_rows(directory: Path) -> dict[str, tuple[str, str]]:
+    """assertion_id -> (status, explanation) over every report in the directory."""
+    rows: dict[str, tuple[str, str]] = {}
     paths = sorted(directory.glob("report*.json"))
     if not paths:
         raise ParityError(f"{directory}: no report*.json")
     for path in paths:
         for row in json.loads(path.read_text())["results"]:
-            known = statuses.setdefault(row["assertion_id"], row["status"])
-            if known != row["status"]:
-                raise ParityError(f"{path}: {row['assertion_id']} is {known} and {row['status']}")
-    return statuses
+            outcome = (row["status"], row.get("explanation") or "")
+            known = rows.setdefault(row["assertion_id"], outcome)
+            if known != outcome:
+                raise ParityError(f"{path}: {row['assertion_id']} is {known} and {outcome}")
+    return rows
 
 
 def evaluations(directory: Path) -> list[dict[str, Any]]:
     """Every recorded evaluation: type, canonical spec, test id and the report status."""
-    statuses = report_statuses(directory)
+    rows = report_rows(directory)
     paths = sorted(directory.glob("contracts-*.ndjson"))
     if not paths:
         raise ParityError(f"{directory}: no contracts-*.ndjson")
@@ -64,7 +69,7 @@ def evaluations(directory: Path) -> list[dict[str, Any]]:
             record = json.loads(line)
             assertion = record["assertion"]
             assertion_id = assertion["assertion_id"]
-            if assertion_id not in statuses:
+            if assertion_id not in rows:
                 raise ParityError(f"{path}: {assertion_id} has no report row")
             seen.add(assertion_id)
             found.append(
@@ -72,13 +77,18 @@ def evaluations(directory: Path) -> list[dict[str, Any]]:
                     "type": assertion["type"],
                     "spec": canonical(assertion["spec"]),
                     "test_id": record.get("test_id") or "",
-                    "status": statuses[assertion_id],
+                    "evidence": rows[assertion_id][1],
+                    "status": rows[assertion_id][0],
                 }
             )
-    unrecorded = sorted(set(statuses) - seen)
+    unrecorded = sorted(set(rows) - seen)
     if unrecorded:
         raise ParityError(f"{directory}: report rows without a recorded spec: {unrecorded}")
     return found
+
+
+def row_key(row: dict[str, Any]) -> Key:
+    return (row["type"], row["spec"], row["evidence"])
 
 
 def matches(entry: dict[str, Any], evaluation: dict[str, Any]) -> bool:
@@ -108,18 +118,19 @@ def compare(
     """Returns (specs, identical, differences, allowlisted keys, unused allowlist entries)."""
     used: set[int] = set()
     skipped: set[Key] = set()
+    for rows in per_language.values():
+        for row in rows:
+            hit = [i for i, entry in enumerate(allowlist) if matches(entry, row)]
+            if hit:
+                used.update(hit)
+                skipped.add(row_key(row))
     statuses: dict[Key, dict[str, list[str]]] = defaultdict(
         lambda: {lang: [] for lang in LANGUAGES}
     )
     for lang, rows in per_language.items():
         for row in rows:
-            key = (row["type"], row["spec"])
-            hit = [i for i, entry in enumerate(allowlist) if matches(entry, row)]
-            if hit:
-                used.update(hit)
-                skipped.add(key)
-                continue
-            statuses[key][lang].append(row["status"])
+            if row_key(row) not in skipped:
+                statuses[row_key(row)][lang].append(row["status"])
     differences = [
         (key, {lang: sorted(found) for lang, found in langs.items()})
         for key, langs in sorted(statuses.items())
@@ -127,11 +138,12 @@ def compare(
     ]
     identical = len(statuses) - len(differences)
     unused = [entry for i, entry in enumerate(allowlist) if i not in used]
-    return len(statuses) + len(skipped - set(statuses)), identical, differences, skipped, unused
+    return len(statuses) + len(skipped), identical, differences, skipped, unused
 
 
 def render(key: Key, found: dict[str, list[str]]) -> str:
     spec = key[1] if len(key[1]) <= 100 else key[1][:97] + "..."
+    spec = f"{spec} -> {key[2]}"
     cells = "  ".join(f"{lang}={','.join(found[lang]) or 'absent'}" for lang in LANGUAGES)
     return f"  {key[0]:<10} {cells:<48} {spec}"
 

@@ -2,19 +2,25 @@
 
 Each language directory holds the specs the engine evaluated (`contracts-*.ndjson`, written
 under ATTEST_CONTRACTS_DIR) and the report-v2 files of the runs that evaluated them
-(`report*.json`). A spec joins to its report row by assertion_id. Verdicts are compared per
-(type, canonical spec, evidence): the sorted statuses of every evaluation of that spec in each
-language. Evidence is the engine's explanation on the report row. One spec runs against several
-inputs (the incident traces and the corrected one), and the explanation, written by the engine
-from the evaluated input, keeps a verdict from being matched with another input's verdict.
-Canonical is sorted-key JSON with an effect spec's embedded world snapshot removed, because
-snapshots differ per run, and with null-valued keys removed, because the Python SDK writes an
-unset optional field (a judge's `model`) as null where the TypeScript SDK omits it.
+(`report*.json`). A spec joins to its report row by assertion_id.
 
-Exits 1 on a spec whose statuses differ, a spec evaluated in one language only, a recording
-without a report row, a report row without a recording, or an allowlist entry that matches
-nothing. An allowlist entry is `{"type": T, "spec_contains": S | "test_id": ID, "reason": R}`; an
-entry that matches an evaluation in either language exempts that spec and evidence in both.
+Verdicts are compared per (type, canonical spec). For each language, the evaluations of a spec
+are the sorted list of (explanation, status) pairs. One spec runs against several inputs (the
+incident traces and the corrected one); the explanation, which the engine writes from the
+evaluated input, keeps the verdicts of different inputs apart, so two inputs swapping verdicts
+is a difference. Canonical is sorted-key JSON with null-valued keys removed (the Python SDK
+writes an unset optional field, a judge's `model`, as null where the TypeScript SDK omits it)
+and, for effect specs, the embedded world snapshot removed (snapshots differ per run).
+
+Exits 1 on a spec whose (explanation, status) lists differ between the languages (a spec
+evaluated in one language only is a difference), a recording without a report row, a report
+row without a recording, or an allowlist entry that matches nothing.
+
+An allowlist entry is `{"type": T, "spec_contains": S | "test_id": ID, "reason": R}`. It
+matches an evaluation of type T whose canonical spec contains S, or whose recorded test id
+equals ID (test ids differ per language, so the id names one language's test). A matched
+evaluation exempts its whole (type, canonical spec) in both languages: every evaluation of that
+spec, in every test, is dropped from the comparison and counted once as allowlisted.
 
 usage: verdict_parity.py [--allowlist FILE] <py-dir> <ts-dir>
 """
@@ -28,17 +34,19 @@ from pathlib import Path
 from typing import Any
 
 LANGUAGES = ("py", "ts")
-Key = tuple[str, str, str]
+Spec = tuple[str, str]
+Pairs = list[tuple[str, str]]
 
 
 class ParityError(Exception):
     """The inputs are inconsistent, so no honest comparison exists."""
 
 
-def canonical(spec: dict[str, Any]) -> str:
-    return json.dumps(
-        {k: v for k, v in spec.items() if k != "world" and v is not None}, sort_keys=True
-    )
+def canonical(kind: str, spec: dict[str, Any]) -> str:
+    kept = {
+        k: v for k, v in spec.items() if v is not None and not (kind == "effect" and k == "world")
+    }
+    return json.dumps(kept, sort_keys=True)
 
 
 def report_rows(directory: Path) -> dict[str, tuple[str, str]]:
@@ -57,7 +65,7 @@ def report_rows(directory: Path) -> dict[str, tuple[str, str]]:
 
 
 def evaluations(directory: Path) -> list[dict[str, Any]]:
-    """Every recorded evaluation: type, canonical spec, test id and the report status."""
+    """Every recorded evaluation: type, canonical spec, test id, explanation and status."""
     rows = report_rows(directory)
     paths = sorted(directory.glob("contracts-*.ndjson"))
     if not paths:
@@ -72,23 +80,20 @@ def evaluations(directory: Path) -> list[dict[str, Any]]:
             if assertion_id not in rows:
                 raise ParityError(f"{path}: {assertion_id} has no report row")
             seen.add(assertion_id)
+            status, explanation = rows[assertion_id]
             found.append(
                 {
                     "type": assertion["type"],
-                    "spec": canonical(assertion["spec"]),
+                    "spec": canonical(assertion["type"], assertion["spec"]),
                     "test_id": record.get("test_id") or "",
-                    "evidence": rows[assertion_id][1],
-                    "status": rows[assertion_id][0],
+                    "explanation": explanation,
+                    "status": status,
                 }
             )
     unrecorded = sorted(set(rows) - seen)
     if unrecorded:
         raise ParityError(f"{directory}: report rows without a recorded spec: {unrecorded}")
     return found
-
-
-def row_key(row: dict[str, Any]) -> Key:
-    return (row["type"], row["spec"], row["evidence"])
 
 
 def matches(entry: dict[str, Any], evaluation: dict[str, Any]) -> bool:
@@ -114,38 +119,38 @@ def load_allowlist(path: Path | None) -> list[dict[str, Any]]:
 
 def compare(
     per_language: dict[str, list[dict[str, Any]]], allowlist: list[dict[str, Any]]
-) -> tuple[int, int, list[tuple[Key, dict[str, list[str]]]], set[Key], list[dict[str, Any]]]:
-    """Returns (specs, identical, differences, allowlisted keys, unused allowlist entries)."""
+) -> tuple[int, int, list[tuple[Spec, dict[str, Pairs]]], list[dict[str, Any]]]:
+    """Returns (specs, allowlisted specs, differences, unused allowlist entries)."""
     used: set[int] = set()
-    skipped: set[Key] = set()
-    for rows in per_language.values():
-        for row in rows:
-            hit = [i for i, entry in enumerate(allowlist) if matches(entry, row)]
-            if hit:
-                used.update(hit)
-                skipped.add(row_key(row))
-    statuses: dict[Key, dict[str, list[str]]] = defaultdict(
-        lambda: {lang: [] for lang in LANGUAGES}
-    )
+    exempt: set[Spec] = set()
+    specs: set[Spec] = set()
+    pairs: dict[Spec, dict[str, Pairs]] = defaultdict(lambda: {lang: [] for lang in LANGUAGES})
     for lang, rows in per_language.items():
         for row in rows:
-            if row_key(row) not in skipped:
-                statuses[row_key(row)][lang].append(row["status"])
+            spec = (row["type"], row["spec"])
+            specs.add(spec)
+            hit = [i for i, entry in enumerate(allowlist) if matches(entry, row)]
+            used.update(hit)
+            if hit:
+                exempt.add(spec)
+            pairs[spec][lang].append((row["explanation"], row["status"]))
     differences = [
-        (key, {lang: sorted(found) for lang, found in langs.items()})
-        for key, langs in sorted(statuses.items())
-        if any(sorted(langs[lang]) != sorted(langs[LANGUAGES[0]]) for lang in LANGUAGES)
+        (spec, {lang: sorted(found) for lang, found in langs.items()})
+        for spec, langs in sorted(pairs.items())
+        if spec not in exempt
+        and any(sorted(langs[lang]) != sorted(langs[LANGUAGES[0]]) for lang in LANGUAGES)
     ]
-    identical = len(statuses) - len(differences)
     unused = [entry for i, entry in enumerate(allowlist) if i not in used]
-    return len(statuses) + len(skipped), identical, differences, skipped, unused
+    return len(specs), len(exempt), differences, unused
 
 
-def render(key: Key, found: dict[str, list[str]]) -> str:
-    spec = key[1] if len(key[1]) <= 100 else key[1][:97] + "..."
-    spec = f"{spec} -> {key[2]}"
-    cells = "  ".join(f"{lang}={','.join(found[lang]) or 'absent'}" for lang in LANGUAGES)
-    return f"  {key[0]:<10} {cells:<48} {spec}"
+def render(spec: Spec, found: dict[str, Pairs]) -> str:
+    text = spec[1] if len(spec[1]) <= 120 else spec[1][:117] + "..."
+    lines = [f"  {spec[0]} {text}"]
+    for lang in LANGUAGES:
+        shown = "; ".join(f"{status} ({why})" for why, status in found[lang]) or "absent"
+        lines.append(f"    {lang}: {shown}")
+    return "\n".join(lines)
 
 
 def main(argv: list[str]) -> int:
@@ -164,16 +169,17 @@ def main(argv: list[str]) -> int:
     except ParityError as error:
         print(f"FAIL {error}", file=sys.stderr)
         return 1
-    specs, identical, differences, skipped, unused = compare(per_language, allowlist)
+    specs, exempt, differences, unused = compare(per_language, allowlist)
     for entry in unused:
         print(f"FAIL allowlist entry matches nothing (stale): {entry}", file=sys.stderr)
     if differences:
         print("FAIL verdicts differ between py and ts:", file=sys.stderr)
-        for key, found in differences:
-            print(render(key, found), file=sys.stderr)
+        for spec, found in differences:
+            print(render(spec, found), file=sys.stderr)
+    identical = specs - exempt - len(differences)
     print(
         f"verdict parity: {specs} specs, {identical} identical, {len(differences)} different, "
-        f"{len(skipped)} allowlisted"
+        f"{exempt} allowlisted"
     )
     return 1 if differences or unused else 0
 

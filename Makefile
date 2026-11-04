@@ -353,12 +353,9 @@ check-parity-selftest:
 
 # Act 6: the failure viewer. It renders whatever reports the suites above wrote, failed suites
 # included, so a red run still produces the page. It never opens a browser here (NO_OPEN=1); run
-# `make view` for that. An attest without `view` skips the step (the released channel).
+# `make view` for that.
 check-view:
-	@rc=0; uv run --project py --no-sync python -c '$(VIEW_PROBE)' || rc=$$?; \
-	if [ $$rc -eq 3 ]; then echo >&2 "skipping the failure viewer: the attest on CHANNEL=$(CHANNEL) has no view command"; exit 0; fi; \
-	test $$rc -eq 0 || exit $$rc; \
-	$(MAKE) --no-print-directory view NO_OPEN=1
+	@$(MAKE) --no-print-directory view NO_OPEN=1
 
 view:
 	$(REQUIRE_CHANNEL)

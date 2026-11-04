@@ -106,7 +106,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -117,6 +117,7 @@ help:
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
+	@echo "make walkthrough [CHANNEL=released|edge]  every act from the incident to the viewer, each outcome checked"
 	@echo "make outage [CHANNEL=edge]           judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
@@ -236,6 +237,11 @@ MUTATE_ATTEST := uv run --project py --no-sync attest
 ACT1_PY_FILTER := not effect_contract
 ACT1_TS_FILTER := ^(?!.*leaves one refund)
 VITEST_REPORT = --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(1)
+
+# Act 1: the output-only tests alone, which stay green with the double refund.
+act1:
+	cd py && uv run --no-sync pytest tests/test_refund_desk.py -k '$(ACT1_PY_FILTER)' --attest-strict
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run tests/refund-desk.test.ts -t '$(ACT1_TS_FILTER)'
 
 check-mutate:
 	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
@@ -448,6 +454,14 @@ recapture-py:
 
 recapture-ts:
 	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts)
+
+# The whole story, act by act, each act's outcome checked (scripts/walkthrough.py). It runs the
+# existing targets above and a copy of this tree with the INC-1042 fix reverted, so it needs
+# `make setup` first and takes a few minutes. It is not part of `make check`: that already runs
+# every suite once, and the walkthrough would run them a second time.
+walkthrough:
+	$(REQUIRE_CHANNEL)
+	$(PYTHON) scripts/walkthrough.py --channel $(CHANNEL)
 
 # Provider outage: attest's judge is unreachable (a closed loopback port) while the agent keeps its
 # scripted server. The judge rows are not evaluated: provider_unavailable; outage.policy.yaml

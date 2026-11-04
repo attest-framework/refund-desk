@@ -106,7 +106,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -117,6 +117,7 @@ help:
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
+	@echo "make outage [CHANNEL=edge]           judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
 	@echo "make view [CHANNEL=edge] [BASELINE_DIR=DIR] [NO_OPEN=1]  render reports/attest-report.html from the reports of the last make check (Act 6)"
@@ -447,6 +448,14 @@ recapture-py:
 
 recapture-ts:
 	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts)
+
+# Provider outage: attest's judge is unreachable (a closed loopback port) while the agent keeps its
+# scripted server. The judge rows are not evaluated: provider_unavailable; outage.policy.yaml
+# warns (exit 2) where attest.policy.yaml blocks (exit 1). Nothing here calls a paid model.
+outage:
+	$(REQUIRE_CHANNEL)
+	$(call WORLD_REQUIRE,outage)
+	$(STACK) $(PYTHON) scripts/outage.py
 
 edge-artifacts:
 	@test -n "$(ATTEST_SRC)" || { echo "usage: make edge-artifacts ATTEST_SRC=<attest checkout>"; exit 1; }

@@ -1,5 +1,4 @@
 // Refund Desk agent: an OpenAI chat-completions tool loop over three tools.
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
@@ -88,20 +87,6 @@ function field(body: { [key: string]: Json }, key: string): Json {
   return value;
 }
 
-/** Same derivation as the Python agent: first 16 hex digits of sha256("<order>:<amount>"). */
-export function idempotencyKey(orderId: string, amountCents: number): string {
-  return createHash("sha256").update(`${orderId}:${amountCents}`).digest("hex").slice(0, 16);
-}
-
-function committed(refund: { [key: string]: Json }): ToolResult {
-  return {
-    refund_id: field(refund, "refund_id"),
-    order_id: field(refund, "order_id"),
-    amount_cents: field(refund, "amount_cents"),
-    status: "committed",
-  };
-}
-
 class Tools {
   constructor(private readonly settings: Settings) {}
 
@@ -120,15 +105,10 @@ class Tools {
     throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
   }
 
-  private async request(
-    method: string,
-    path: string,
-    body?: Json,
-    headers: Record<string, string> = {},
-  ): Promise<Response> {
+  private async request(method: string, path: string, body?: Json): Promise<Response> {
     return fetch(`${this.settings.paymentsBaseUrl}${path}`, {
       method,
-      headers: { "Content-Type": "application/json", ...headers },
+      headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(this.settings.paymentsTimeoutMs),
     });
@@ -154,24 +134,17 @@ class Tools {
   }
 
   async issueRefund(orderId: string, amountCents: number, reason: string): Promise<ToolResult> {
-    // The key derives from the order and the amount, so a retry of the same refund carries the
-    // same key and the payments API answers it with the first refund (INC-1042).
+    // No idempotency key: a retry after a timeout is a new refund (INC-1042).
     let response: Response;
     try {
-      response = await this.request(
-        "POST",
-        "/refunds",
-        { order_id: orderId, amount_cents: amountCents, reason },
-        { "Idempotency-Key": idempotencyKey(orderId, amountCents) },
-      );
+      response = await this.request("POST", "/refunds", {
+        order_id: orderId,
+        amount_cents: amountCents,
+        reason,
+      });
     } catch (error) {
       if (error instanceof DOMException && error.name === "TimeoutError") {
-        return (
-          (await this.committedRefund(orderId, amountCents)) ?? {
-            error: "payments_timeout",
-            order_id: orderId,
-          }
-        );
+        return { error: "payments_timeout", order_id: orderId };
       }
       throw error;
     }
@@ -179,16 +152,13 @@ class Tools {
       const body = (await response.json()) as { error: string };
       return { error: field(body, "error"), order_id: orderId };
     }
-    return committed(await Tools.json(response));
-  }
-
-  /** The refund the payments API committed before the timeout, if there is one. */
-  private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
-    const response = await this.request("GET", `/refunds?order_id=${encodeURIComponent(orderId)}`);
-    if (!response.ok) throw new Error(`payments ${response.status}: ${await response.text()}`);
-    const { refunds } = (await response.json()) as { refunds: { [key: string]: Json }[] };
-    const match = refunds.find((refund) => refund.amount_cents === amountCents);
-    return match === undefined ? null : committed(match);
+    const refund = await Tools.json(response);
+    return {
+      refund_id: field(refund, "refund_id"),
+      order_id: field(refund, "order_id"),
+      amount_cents: field(refund, "amount_cents"),
+      status: "committed",
+    };
   }
 
   async notifyCustomer(orderId: string, message: string): Promise<ToolResult> {

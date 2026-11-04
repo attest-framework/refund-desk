@@ -4,8 +4,9 @@ Run from the repository root with `make walkthrough` after `make setup` (it expo
 settings from stack.mk). Each act runs the existing make targets, or the same suites in a copy
 of this tree with the INC-1042 fix reverted (regression/revert-inc-1042-fix.patch, the change
 of the regression pull requests), and compares what happened with the outcome the act promises.
-The working tree is never modified. It needs no provider key, no `claude` and no network
-beyond what `make setup` used.
+The working tree is never modified. It needs no provider key and no `claude`. Network use is
+`make setup`'s installs plus, on a fresh HOME, the one-time download of `attest-engine` from
+GitHub Releases on the released channel.
 
 An act that ends differently prints the act, the expected and the actual outcome and the path
 of its log, and the script exits 1 after the first such act. Logs go to reports/walkthrough/.
@@ -28,10 +29,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 LOGS = ROOT / "reports" / "walkthrough"
 PATCH = ROOT / "regression" / "revert-inc-1042-fix.patch"
+# The fixtures recorded from the agent as it shipped (the commit before the fix re-recorded them).
+PRE_FIX_FIXTURES = ROOT / "regression" / "pre-fix-fixtures"
 NOT_COPIED = {".git", ".worktrees", ".stack", ".attest-edge", ".venv", "node_modules", "reports"}
 INCIDENT_TRACES = ("trace.py.otlp.json", "trace.ts.otlp.json")
 REFUND_SPAN = "execute_tool issue_refund"
 DUPLICATE = "effect violated: 2 refunds for O-1042 (expected 1)"
+DUPLICATE_REFUNDS = "effect violated: 2 refunds for O-1042"
 ZERO_COST = "0 live model calls · $0.00"
 MUTATION_LINES = (
     "policy on the Act 1 tests: exit 1 (expected 1)",
@@ -95,7 +99,7 @@ class Walkthrough:
         return self.run(["uv", "run", "--project", "py", "--no-sync", "attest", *args], root)
 
     def regression_copy(self) -> Path:
-        """A copy of this tree with the INC-1042 fix reverted, set up once and reused."""
+        """A copy of this tree as before the fix: agent reverted, fixtures as first recorded."""
         if self.copy is not None:
             return self.copy
         expected = "a temporary copy with the INC-1042 fix reverted, set up on the same channel"
@@ -109,11 +113,13 @@ class Walkthrough:
         )
         if patched.code != 0:
             raise ActError(expected, f"{PATCH.name} does not apply (patch exit {patched.code})")
+        for language in ("py", "ts"):
+            fixture = Path(language) / "tests" / "attest" / "fixtures" / "inc-1042.attest.json"
+            shutil.copyfile(PRE_FIX_FIXTURES / language / "inc-1042.attest.json", copy / fixture)
         setup = self.make("setup", root=copy)
         if setup.code != 0:
             raise ActError(expected, f"make setup in the copy exited {setup.code}")
         (copy / "reports").mkdir()
-        self.copy = copy
         return copy
 
     def cleanup(self) -> None:
@@ -127,8 +133,11 @@ class Walkthrough:
         copy = self.regression_copy()
         expected = "output-only tests pass on the unfixed agent; each incident trace has 2 refunds"
         tests = self.make_with_stack("act1", root=copy)
-        if tests.code != 0:
-            raise ActError(expected, f"the output-only tests exited {tests.code}")
+        passed = len(re.findall(r"\b3 passed\b", tests.output))
+        if tests.code != 0 or passed != 2:
+            raise ActError(
+                expected, f"the output-only tests exited {tests.code}; '3 passed' printed {passed}×"
+            )
         counts = {
             name: refund_calls(ROOT / "incidents" / "INC-1042" / name) for name in INCIDENT_TRACES
         }
@@ -139,8 +148,11 @@ class Walkthrough:
     def act_trace_check(self) -> str:
         expected = "trace check passes both traces; the contract reports the duplicate refund"
         doctor = self.make("doctor")
-        if doctor.code != 0 or doctor.output.count("structure: OK") != 2:
+        if doctor.code != 0:
             raise ActError(expected, f"make doctor exited {doctor.code}")
+        structure = doctor.output.count("structure: OK")
+        if structure != 2:
+            raise ActError(expected, f"'structure: OK' printed {structure}× for 2 traces")
         if doctor.output.count("1 retry") != 2:
             raise ActError(expected, "make doctor did not report the retried issue_refund call")
         reproduction = self.make("check-reproduction")
@@ -162,17 +174,27 @@ class Walkthrough:
         return "capture verifies INC-1042: byte-identical, 0 planted secrets, tests pass"
 
     def act_failing_replay(self) -> str:
-        expected = "strict replay of the unfixed agent fails with 0 live model calls"
+        expected = (
+            f"strict replay of the INC-1042 recording against the unfixed agent fails with "
+            f"'{DUPLICATE_REFUNDS}', 0 misses, 0 live model calls"
+        )
         copy = self.regression_copy()
         replay = self.make("replay-tests", root=copy)
         if replay.code == 0:
             raise ActError(expected, "strict replay passed on the unfixed agent")
         for name in REPLAY_REPORTS:
-            summary = report_summary(copy / "reports" / name)
-            replay_block = summary.get("replay") or {}
-            if replay_block.get("live") != 0 or not replay_block.get("misses"):
-                raise ActError(expected, f"{name}: replay block {replay_block}")
-        return "strict replay fails on the unfixed agent: replay miss, 0 live model calls"
+            data = json.loads((copy / "reports" / name).read_text())
+            replay_block = data["summary"].get("replay") or {}
+            violated = [
+                row
+                for row in data["results"]
+                if row["status"] == "hard_fail" and DUPLICATE_REFUNDS in row["explanation"]
+            ]
+            if replay_block.get("live") != 0 or replay_block.get("misses") != 0 or not violated:
+                raise ActError(
+                    expected, f"{name}: replay block {replay_block}, {len(violated)} violations"
+                )
+        return f"strict replay reproduces INC-1042: '{DUPLICATE_REFUNDS}', 0 misses, 0 live calls"
 
     def act_merged_fix(self) -> str:
         expected = f"the fixed agent passes every suite and the summary reads {ZERO_COST}"
@@ -205,10 +227,16 @@ class Walkthrough:
             raise ActError(expected, f"policy exit codes per report: {policy_exits}")
         reports = [copy / "reports" / name for name in (*LIVE_REPORTS, *REPLAY_REPORTS)]
         summary = self.report_summary_markdown(reports)
-        located = re.search(r"`(?:tests/)[^`]+:\d+`", summary)
-        if DUPLICATE not in summary or located is None:
-            raise ActError(expected, f"summary lacks the failure and its file:line: {summary!r}")
-        return f"the regression is blocked: {located.group(0)} '{DUPLICATE}', policy exit 1"
+        located = [
+            found.group(1)
+            for line in summary.splitlines()
+            if DUPLICATE in line and (found := re.search(r"`([^`]+:\d+)`", line))
+        ]
+        if not located:
+            raise ActError(
+                expected, f"no summary row has the failure and its file:line: {summary!r}"
+            )
+        return f"the regression is blocked: {located[0]} '{DUPLICATE}', policy exit 1"
 
     def act_outage(self) -> str:
         expected = "judge rows are not evaluated: provider_unavailable and the policy exits 2"

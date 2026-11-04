@@ -37,7 +37,12 @@ TS_REPORT = OUT / "attest-report.ts.json"
 
 
 def closed_port() -> int:
-    """A loopback port nothing listens on: bind to learn a free one, then release it."""
+    """A loopback port nothing listens on: bind to learn a free one, then release it.
+
+    The socket cannot stay bound: a bound socket that does not listen makes connections hang
+    until the judge timeout (30 s per call) instead of being refused, and a refused connection
+    is the outage this act shows.
+    """
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port: int = sock.getsockname()[1]

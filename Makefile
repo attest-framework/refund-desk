@@ -118,7 +118,7 @@ help:
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make walkthrough [CHANNEL=released|edge]  every act from the incident to the viewer, each outcome checked"
-	@echo "make outage [CHANNEL=edge]           judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
+	@echo "make outage [CHANNEL=released|edge]        judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
 	@echo "make view [CHANNEL=edge] [BASELINE_DIR=DIR] [NO_OPEN=1]  render reports/attest-report.html from the reports of the last make check (Act 6)"
@@ -457,7 +457,7 @@ recapture-ts:
 
 # The whole story, act by act, each act's outcome checked (scripts/walkthrough.py). It runs the
 # existing targets above and a copy of this tree with the INC-1042 fix reverted, so it needs
-# `make setup` first and takes a few minutes. It is not part of `make check`: that already runs
+# `make setup` first and takes about two minutes. It is not part of `make check`: that already runs
 # every suite once, and the walkthrough would run them a second time.
 walkthrough:
 	$(REQUIRE_CHANNEL)

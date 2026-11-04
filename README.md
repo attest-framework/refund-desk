@@ -15,22 +15,22 @@ Start with `attest-examples` to copy a working setup for your framework. Read th
 
 ## From incident to regression test
 
-One incident, followed from the first report to a merge gate that blocks its regression. Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.io/). No API key, no model call and no network beyond the package installs of `make setup`.
+One incident, followed from the first report to a merge gate that blocks its regression. Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.io/). No API key and no model call. The network is used by the package installs of `make setup` and, on a fresh `HOME`, by the one-time download of `attest-engine` from GitHub Releases on the released channel.
 
 ```bash
 make setup walkthrough
 ```
 
-`make walkthrough` runs every act below in order on the released attest (`CHANNEL=released`, the default; `make walkthrough CHANNEL=edge` runs attest from source, see [Channels](#channels)), checks the outcome each act promises and prints one line per act. A wrong outcome prints the act, the expected and the actual result and exits 1; every command's log is kept in `reports/walkthrough/`. It takes about two minutes. The unfixed agent comes from a temporary copy of this tree with [`regression/revert-inc-1042-fix.patch`](regression/revert-inc-1042-fix.patch) applied (the change of the regression pull requests #12 and #22), so the working tree is never modified.
+`make walkthrough` runs every act below in order on the released attest (`CHANNEL=released`, the default; `make walkthrough CHANNEL=edge` runs attest from source, see [Channels](#channels)), checks the outcome each act promises and prints one line per act. A wrong outcome prints the act, the expected and the actual result and exits 1; every command's log is kept in `reports/walkthrough/`. It takes about two minutes. The unfixed agent comes from a temporary copy of this tree with [`regression/revert-inc-1042-fix.patch`](regression/revert-inc-1042-fix.patch) applied (the change of the regression pull requests [#12](https://github.com/attest-framework/refund-desk/pull/12) and [#22](https://github.com/attest-framework/refund-desk/pull/22)) and with the fixtures recorded before the fix restored from [`regression/pre-fix-fixtures/`](regression/pre-fix-fixtures/), so the working tree is never modified.
 
 ```text
 walkthrough on the released channel (logs in reports/walkthrough/)
 Act 1: output-only tests pass; both incident traces show 2 refunds ✓
 Act 2: trace check passes; the contract reports issue_refund called 2× ✓
 Act 3a: capture verifies INC-1042: byte-identical, 0 planted secrets, tests pass ✓
-Act 3b: strict replay fails on the unfixed agent: replay miss, 0 live model calls ✓
+Act 3b: strict replay reproduces INC-1042: 'effect violated: 2 refunds for O-1042', 0 misses, 0 live calls ✓
 Act 4a: the fix passes: 0 failed, 0 live model calls · $0.00 ✓
-Act 4b: the regression is blocked: `tests/refund-desk.test.ts:88` 'effect violated: 2 refunds for O-1042 (expected 1)', policy exit 1 ✓
+Act 4b: the regression is blocked: tests/refund-desk.test.ts:88 'effect violated: 2 refunds for O-1042 (expected 1)', policy exit 1 ✓
 Act 5a: mutation score 0.00 → 0.34: the Act 1 tests block, the contracts pass ✓
 Act 5b: the MCP-drafted contract test passes ✓
 Act 6: viewer page written: 10 tests, 0 failed, 10 traces ✓
@@ -44,7 +44,7 @@ walkthrough: every act ended as expected
 | 1 | The incident happens; output-only tests stay green |
 | 2 | A behavior contract over the frozen trace detects the double refund |
 | 3a | `attest capture` turns the incident run into a verified fixture with the secrets removed |
-| 3b | Replay: the real agent code runs against the fixture with zero model calls, and the double refund reproduces as a failing effect contract |
+| 3b | Replay: the real agent code runs against the recorded incident with zero model calls, and the double refund reproduces as a failing effect contract (the walkthrough shows it against the fixtures recorded before the fix) |
 | 4 | The fix (idempotency key plus a status check) merges with zero live model calls; a regression pull request is blocked with an annotation |
 | 5 | A coding agent drafts the contract; mutation testing scores it |
 | 6 | Identical verdicts in TypeScript; a viewer artifact on the regression pull request |
@@ -132,13 +132,13 @@ The fixture was first captured from the agent as it shipped, where the same capt
 The demo plants two secrets so the redaction has something to catch: a fake key in `OPENAI_API_KEY` (`stack.mk`, shaped like a real `sk-` key) and a customer email in `incidents/INC-1042/request.json`. Excerpt of the fixture:
 
 ```json
-"verification": { "expect_fail": true, "expected_failures": ["cardinality-issue_refund-per-order_id"], "verified": true },
+"verification": { "expect_fail": false, "expected_failures": [], "verified": true },
 "exchanges": [{
   "api": "chat_completions", "path": "/chat/completions", "provider": "openai",
   "request": { "messages": [ ..., { "content": "Hi, {{email_1}}: O-1042 came damaged. Refund.", "role": "user" } ] },
   "key": { "model": "refund-desk-scripted", "prompt_hash": "sha256:1bf2c172…", "tool_schema_hash": "sha256:85273f44…" }
 }],
-"world": null
+"world": { "definition_sha256": "a5cd72eb…", "faults_fired": [{ "fault": "timeout_after_commit", "id": "inc-1042", "request": 1, ... }], "state": { "refunds": [{ "refund_id": "R-0001", "order_id": "O-1042", ... }], ... } }
 ```
 
 The email is `{{email_1}}` in every place it appears. The key is nowhere in the fixture: request headers, which carry it, are never recorded, and any other place it reached would be `[redacted]`. `make capture-check` holds that to account:
@@ -150,7 +150,7 @@ The email is `{{email_1}}` in every place it appears. The key is nowhere in the 
 | `grep` each fixture for the planted key and the email | 0 hits |
 | `attest trace check` on each fixture | exit 0 |
 
-The fixture is the input of Act 3b. It holds the five model exchanges with their request keys, so replay can answer the agent's real code from the recording with zero model calls, and the `world` section holds the payments world's final state (the two refunds) and the fault that fired. It is evidence only: replay and the tests start a fresh world from `world/`. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
+The fixture is the input of Act 3b. It holds the four model exchanges of the fixed agent's run with their request keys (the incident capture from the agent as it shipped had five), so replay can answer the agent's real code from the recording with zero model calls, and the `world` section holds the payments world's final state (one refund) and the fault that fired. It is evidence only: replay and the tests start a fresh world from `world/`. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
 
 `make capture` and `make capture-check` need attest >= 1.0.0-rc.3 on every channel.
 
@@ -178,7 +178,7 @@ attest replay: 4 replayed · 0 live model calls · $0.00
 
 Each test asserts the effect contract `count("refunds", equals=1, order_id="O-1042")` with `evaluate()` against the world's final state, and it passes: the fixed agent leaves one refund. Before the fix the same tests failed with `effect violated: 2 refunds for O-1042 (expected 1)` and sat under strict expected-failure markers (`pytest.mark.xfail(strict=True)`, Vitest `it.fails`) that the fix removed. The trace contract on the incident stays in the reproduction tests, which read the frozen traces and stay green for good.
 
-The failing replay no longer exists on `main`: the fix (Act 4) re-recorded the fixtures with the fixed agent's requests. `make walkthrough` shows it by reverting the fix in a temporary copy of this tree and requiring strict replay to fail there with `0 live model calls`. Against the re-recorded fixtures the unfixed agent fails with a replay miss rather than the effect message quoted above.
+The fixtures on `main` are the fixed agent's recording, so replay passes there. The first capture, from the agent as it shipped, was committed with `--expect-fail`: five exchanges, `"expect_fail": true` and a world with two refunds for O-1042. [`regression/pre-fix-fixtures/`](regression/pre-fix-fixtures/) keeps those two fixtures. `make walkthrough` reverts the fix in a temporary copy of this tree, restores them there and requires strict replay to fail in both languages with `effect violated: 2 refunds for O-1042`, 0 replay misses and 0 live model calls: the incident replays from its recording.
 
 #### A changed prompt is a replay miss
 
@@ -285,7 +285,7 @@ make outage
 - `attest policy evaluate --policy outage.policy.yaml` exits 2: [`outage.policy.yaml`](outage.policy.yaml) is `attest.policy.yaml` with `not_evaluated: warn`;
 - the same report under `attest.policy.yaml` exits 1, which is why the two policies differ.
 
-Reports are written to `reports/outage/`. It runs on both channels and is not part of `make check`.
+Reports are written to `reports/outage/`. It runs on both channels and is not part of `make check`. The plan's story places the outage after the regression; the demo numbers it last (Act 7) so the existing Act 5 and Act 6 names stay.
 
 
 ## Run it

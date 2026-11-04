@@ -25,6 +25,12 @@ jobs:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # actions: read lets the baseline step list main's runs and download one's artifact. PR code
+    # runs later in this same job, so the token's scope (contents: read, actions: read) is the
+    # real limit on what that code can reach; the job holds no write permission.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +46,48 @@ jobs:
         with:
           package_json_file: ts/package.json
 
+      # The failure viewer compares a pull request against the reports of the latest successful
+      # run on main (artifact attest-reports, uploaded below). No such run or artifact yet
+      # (the first run after this step landed, or an expired artifact): no baseline, and the
+      # page says so.
+      - name: Find the baseline reports of main
+        id: baseline
+        if: github.event_name == 'pull_request'
+        # The baseline is optional: a lookup or download error must not fail the required job.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --status success --event push --limit 1 --json databaseId,headSha \
+            --jq '.[0] | select(. != null) | "\(.databaseId) \(.headSha)"')"
+          run_id="${latest%% *}"
+          head_sha="${latest#* }"
+          if [ -z "$run_id" ]; then
+            echo "::notice::No successful run of ci.yml on main yet; the viewer renders without a baseline."
+            exit 0
+          fi
+          found="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+            --jq '[.artifacts[] | select(.name == "attest-reports" and (.expired | not))] | length')"
+          if [ "$found" -eq 0 ]; then
+            echo "::notice::Run $run_id on main has no attest-reports artifact; the viewer renders without a baseline."
+            exit 0
+          fi
+          echo "::notice::Baseline: run $run_id ($head_sha)"
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download the baseline reports
+        id: baseline-dl
+        if: steps.baseline.outputs.run-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: attest-reports
+          path: baseline-reports
+          run-id: ${{ steps.baseline.outputs.run-id }}
+          github-token: ${{ github.token }}
+
       - name: Install the agents on attest main
         env:
           ATTEST_SRC: ${{ steps.attest.outputs.source-dir }}
@@ -48,10 +96,36 @@ jobs:
           ATTEST_VITEST_TGZ: ${{ steps.attest.outputs.vitest-tarball }}
         run: make setup CHANNEL=edge
 
+      # make check ends with the failure viewer: reports/attest-report.html, with the baseline
+      # diff when BASELINE_DIR holds main's reports.
       - name: make check
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
+          BASELINE_DIR: ${{ steps.baseline-dl.outcome == 'success' && 'baseline-reports' || '' }}
         run: make check CHANNEL=edge
+
+      # Uploaded right after make check for the same reason as the copy step below: replay-miss
+      # rewrites the replay reports. The reports hold traces (synthetic data in this demo), and a
+      # run on main makes them the next baseline.
+      - name: Upload the failure viewer
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: attest-report-html
+          path: reports/attest-report.html
+          if-no-files-found: warn
+
+      - name: Upload the reports with traces
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: attest-reports
+          path: |
+            reports/attest-report.py.json
+            reports/attest-report.ts.json
+            reports/attest-report.replay.py.json
+            reports/attest-report.replay.ts.json
+          if-no-files-found: warn
 
       # pr-annotate resolves each row's `file` (relative to the test rootdir) by prefixing the
       # report's own directory, so the reports go next to the tests that wrote them. This runs

@@ -270,6 +270,17 @@ The check fails on a spec whose status differs between the languages and on a sp
 
 `ts/tests/attest/inc-1042.test.ts` gained the double-refund contract that `py/tests/attest/test_inc_1042.py` already had (`tool_cardinality` per order plus the `world(FIXTURE.world)` effects). The SDK-side parity matrix (the TypeScript counterpart of every Python API) is in attest: `attest guide parity`, `docs/guides/parity.md`.
 
+### The failure viewer
+
+`attest view` turns the suite reports into one self-contained HTML page: the test list, the trace tree with the failing span highlighted, expected against actual, replay or live provenance, cost, a baseline diff and (when given) the surviving mutants. It needs no server and loads nothing from outside the file. See `attest guide viewer`.
+
+`make check` runs the report-writing suites with `ATTEST_REPORT_TRACES=1` (the data here is synthetic, so embedding traces is safe) and ends with `make view`, which writes `reports/attest-report.html` from the four reports (`attest-report.{py,ts}.json` and `attest-report.replay.{py,ts}.json`). The page is written even when a suite failed.
+
+- **From a pull request:** open the `edge` job of the PR's workflow run and download the `attest-report-html` artifact (it is a zip holding `attest-report.html`); open the file in a browser. On a pull request the job first downloads the `attest-reports` artifact of the latest successful run on `main` and passes it as the baseline, so the page carries a baseline-versus-head section: pass rate, cost, latency and every test whose tool sequence changed. A repository without a successful `main` run yet renders the page without a baseline and says so.
+- **Locally:** `make view CHANNEL=edge` opens the page after a `make check`; `NO_OPEN=1` only writes it; `BASELINE_DIR=<dir>` compares against the four reports of an earlier run kept in that directory. `make check` deletes the previous reports first; `make replay-miss` rewrites the two replay reports with its deliberate miss, so run `make check` again before `make view`.
+
+The Act 4 effect test is the one that records the agent's own OpenTelemetry spans (`chat <model>`, `execute_tool <name>`) into its attest trace and adds `tool_cardinality("issue_refund", per="order_id", at_most=1)` to its effect checks; the three Act 1 tests stay output-only. On the fixed agent the contract passes. With the INC-1042 fix reverted (the regression pull request, as in [#12](https://github.com/attest-framework/refund-desk/pull/12)) the contract hard-fails and the viewer outlines the second `issue_refund` span (`steps[N]` in the failing row's trace node) as the failing span, next to the baseline diff (`+issue_refund`).
+
 ## Trace doctor
 
 `make doctor` runs `attest trace check` on both committed INC-1042 traces. It exits non-zero when a trace has structural errors (orphan or unpaired spans, reported by span id) and prints what evidence the trace lacks:

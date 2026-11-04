@@ -56,7 +56,8 @@ class ActError(Exception):
 @dataclass
 class Run:
     code: int
-    output: str
+    output: str  # stdout and stderr
+    stdout: str
 
 
 class Walkthrough:
@@ -76,7 +77,7 @@ class Walkthrough:
         output = proc.stdout + proc.stderr
         log = LOGS / f"{self.step:02d}.log"
         log.write_text(f"$ cd {cwd} && {' '.join(argv)}\n{output}\nexit {proc.returncode}\n")
-        return Run(proc.returncode, output)
+        return Run(proc.returncode, output, proc.stdout)
 
     def make(self, *targets: str, root: Path = ROOT, keep_going: bool = False) -> Run:
         flags = ["-k"] if keep_going else []
@@ -99,10 +100,13 @@ class Walkthrough:
             return self.copy
         expected = "a temporary copy with the INC-1042 fix reverted, set up on the same channel"
         copy = Path(tempfile.mkdtemp(prefix="refund-desk-regression-"))
+        self.copy = copy  # cleanup() removes it even when the setup below fails
         shutil.copytree(
             ROOT, copy, dirs_exist_ok=True, ignore=lambda _dir, names: NOT_COPIED & set(names)
         )
-        patched = self.run(["patch", "-p1", "-i", str(PATCH)], copy)
+        patched = self.run(
+            ["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", str(PATCH)], copy
+        )
         if patched.code != 0:
             raise ActError(expected, f"{PATCH.name} does not apply (patch exit {patched.code})")
         setup = self.make("setup", root=copy)
@@ -239,6 +243,7 @@ class Walkthrough:
     def act_viewer(self) -> str:
         expected = "the viewer page is written from the reports of the fixed agent"
         page = ROOT / "reports" / "attest-report.html"
+        page.unlink(missing_ok=True)
         view = self.make("view", "NO_OPEN=1")
         if view.code != 0 or not page.is_file():
             raise ActError(
@@ -254,7 +259,7 @@ class Walkthrough:
             raise ActError(
                 "an attest report summary", f"attest report summary exited {summary.code}"
             )
-        markdown: str = json.loads(summary.output)["markdown"]
+        markdown: str = json.loads(summary.stdout)["markdown"]
         return markdown
 
 
@@ -270,13 +275,19 @@ def report_summary(report: Path) -> dict[str, Any]:
     return summary
 
 
+def report_failure(name: str, failure: ActError) -> int:
+    print(f"{name}: FAILED\n  expected: {failure.expected}\n  actual:   {failure.actual}")
+    print(f"  logs:     {LOGS.relative_to(ROOT)}/ (the last file is the failing command)")
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", choices=["released", "edge"], required=True)
     channel = parser.parse_args().channel
 
-    if LOGS.parent.exists():
-        shutil.rmtree(LOGS.parent)
+    if LOGS.exists():
+        shutil.rmtree(LOGS)
     LOGS.mkdir(parents=True)
     walkthrough = Walkthrough(channel)
     acts: list[tuple[str, Callable[[], str]]] = [
@@ -296,14 +307,11 @@ def main() -> int:
         for name, act in acts:
             try:
                 print(f"{name}: {act()} ✓", flush=True)
+            except (OSError, ValueError, KeyError) as error:
+                failure = ActError(f"{name} to finish", f"{type(error).__name__}: {error}")
+                return report_failure(name, failure)
             except ActError as failure:
-                print(
-                    f"{name}: FAILED\n  expected: {failure.expected}\n  actual:   {failure.actual}"
-                )
-                print(
-                    f"  logs:     {LOGS.relative_to(ROOT)}/ (the last file is the failing command)"
-                )
-                return 1
+                return report_failure(name, failure)
     finally:
         walkthrough.cleanup()
     print("walkthrough: every act ended as expected")

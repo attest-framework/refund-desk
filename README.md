@@ -35,6 +35,7 @@ make check CHANNEL=edge      # lint, type-check and run the attest tests in both
 | `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
 | `py/tests/replay/`, `ts/tests/replay/` | The INC-1042 replay tests: today's agent against the captured fixture (Act 3b) |
 | `mutation.policy.yaml`, `scripts/mutation_report.py` | The Act 5 mutation-score gate and the before/after report that `make mutate` prints (Act 5) |
+| `scripts/verdict_parity.py`, `parity-allowlist.json` | The Act 6 check that the py and ts suites return the same verdict for every contract (`make check-parity`) |
 | `scripts/span-structure.txt` | The span structure of the current agent's incident run, which `make incident` compares against |
 | `stack.mk` | Ports, URLs and the planted fake `OPENAI_API_KEY` the scripted server ignores |
 
@@ -256,6 +257,18 @@ Two transcripts in [`docs/agent-transcripts/`](docs/agent-transcripts/) show a c
 - [With the attest MCP server](docs/agent-transcripts/2026-11-04-attest-mcp-inc-1042-contract.md): a fresh session with only the MCP server drafts the contract with `draft_contract` and checks it with `run_contract`. It passes on the fixed agent's fixture, and its trace check fails on the frozen incident trace. The session then adds it to `py/tests/attest/test_inc_1042.py` (`test_inc_1042_double_refund_contract_holds_on_fixed_agent`).
 
 `attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`). The released channel has `attest mcp` from 1.0.0-rc.4. See `attest guide mcp`.
+
+## Act 6: TypeScript parity
+
+The TypeScript suite runs the same contracts, fixture and world as the Python one. `make check-parity` proves the verdicts match instead of trusting that the two test files drifted together: it runs every py and ts suite (the default tests, the captured-fixture tests, the reproduction tests and the strict-replay tests) with `ATTEST_CONTRACTS_DIR` set, so the engine records each spec it evaluates. A recorded spec joins to its report-v2 row by `assertion_id`, and the script compares, per `(type, spec)` and language, the sorted `(explanation, status)` pairs of that spec's evaluations. One spec runs against both incident traces and the corrected one; the engine's explanation, written from the evaluated input, keeps the verdicts of different inputs apart. The spec is canonical JSON: keys sorted, an effect spec's world snapshot removed (it differs per run), and null-valued keys dropped (the Python SDK writes an unset judge `model` as `null`, the TypeScript SDK omits it).
+
+```text
+verdict parity: 16 specs, 16 identical, 0 different, 0 allowlisted
+```
+
+The check fails on a spec whose status differs between the languages and on a spec only one language evaluates. `parity-allowlist.json` lists the exceptions (`{type, spec_contains | test_id, reason}`; a match on an evaluation in either language exempts that whole `(type, spec)` in both languages); it is empty. An entry that matches nothing also fails. `make check-parity-selftest` proves the check bites: it feeds the script small recording and report pairs with a differing status, a verdict that flips on one of two inputs of a spec, a one-language spec, a recording with no report row, a report row with no recording and a stale allowlist entry, and requires each to fail (and a differing world snapshot or a null-valued key to pass). The recording runs write their reports under `reports/parity/` only, so the policy runs above are unchanged.
+
+`ts/tests/attest/inc-1042.test.ts` gained the double-refund contract that `py/tests/attest/test_inc_1042.py` already had (`tool_cardinality` per order plus the `world(FIXTURE.world)` effects). The SDK-side parity matrix (the TypeScript counterpart of every Python API) is in attest: `attest guide parity`, `docs/guides/parity.md`.
 
 ## Trace doctor
 

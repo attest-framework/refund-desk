@@ -34,10 +34,25 @@ const EXPECTED: Array<[string, string]> = [
   ["cardinality-notify_customer-per-order_id", "pass"],
 ];
 
+/** INC-1042: one refund per order, in the trace and in the payments world. */
+function doubleRefundContract(): ExpectChain {
+  const chain = attestExpect(FIXTURE.trace).toolCardinality("issue_refund", { per: "order_id", atMost: 1 });
+  const effects = chain.world(FIXTURE.world);
+  effects.count("refunds", { equals: 1, where: { order_id: "O-1042" } });
+  effects.unique("refunds", { by: "idempotency_key" });
+  return chain;
+}
+
 describe("inc-1042", () => {
   it("meets every contract on the fixed agent run", async () => {
     const result = await inspect(contracts());
 
     expect(result.assertionResults.map((row) => row.status)).toEqual(EXPECTED.map(([, s]) => s));
+  });
+
+  it("holds the double-refund contract on the fixed agent run", async () => {
+    const result = await inspect(doubleRefundContract());
+
+    expect(result.assertionResults.map((row) => row.status)).toEqual(["pass", "pass", "pass"]);
   });
 });

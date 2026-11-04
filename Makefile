@@ -90,7 +90,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -102,6 +102,7 @@ help:
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
+	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -144,6 +145,8 @@ check:
 	$(MAKE) --no-print-directory check-replay || failed="$$failed check-replay"; \
 	echo '$(MAKE) --no-print-directory check-mutate'; \
 	$(MAKE) --no-print-directory check-mutate || failed="$$failed check-mutate"; \
+	echo '$(MAKE) --no-print-directory check-parity'; \
+	$(MAKE) --no-print-directory check-parity || failed="$$failed check-parity"; \
 	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
 check-py:
@@ -260,6 +263,72 @@ mutate-record-all:
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all pnpm exec vitest run --config reproduction/vitest.config.ts
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts
+
+# Act 6: py and ts verdict parity. The recording runs write the specs the engine evaluates to
+# $(PARITY_DIR)/{py,ts}/ and each suite's report next to them, so no existing report or policy run
+# changes. scripts/verdict_parity.py joins spec to report row by assertion_id and groups by
+# (type, canonical spec); per language it compares the sorted (explanation, status) pairs of
+# that spec's evaluations. Nothing here calls a paid model.
+PARITY_DIR := $(REPORTS)/parity
+
+# The selftest and the real comparison both run, so a failing selftest cannot hide a difference table.
+check-parity:
+	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
+	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) cannot record contracts (ATTEST_CONTRACTS_DIR arrived with attest mutate)"; \
+	test $$rc -eq 0 || exit $$rc; \
+	selftest=0; $(MAKE) --no-print-directory check-parity-selftest || selftest=1; \
+	$(MAKE) --no-print-directory parity || exit 1; exit $$selftest
+
+PARITY_SUITES := py-default py-attest py-reproduction py-replay ts-default ts-attest ts-reproduction ts-replay
+
+# Every recording runs even after one fails, then the script runs; any failure fails the target.
+parity:
+	$(REQUIRE_CHANNEL)
+	$(call WORLD_REQUIRE,parity)
+	rm -rf $(PARITY_DIR)
+	mkdir -p $(PARITY_DIR)/py $(PARITY_DIR)/ts
+	@rc=0; \
+	$(STACK) $(MAKE) --no-print-directory -k $(addprefix parity-record-,$(PARITY_SUITES)) || rc=1; \
+	$(PYTHON) scripts/verdict_parity.py --allowlist parity-allowlist.json $(PARITY_DIR)/py $(PARITY_DIR)/ts || rc=1; \
+	exit $$rc
+
+# One target per suite (default scope, captured-fixture tests, reproduction, strict replay) so -k
+# keeps going past a failing one.
+parity-record-py-default:
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay \
+	  --attest-strict --attest-report=$(PARITY_DIR)/py/report.default.json
+
+parity-record-py-attest:
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest --attest-strict \
+	  --attest-report=$(PARITY_DIR)/py/report.attest.json
+
+parity-record-py-reproduction:
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest reproduction \
+	  --attest-report=$(PARITY_DIR)/py/report.reproduction.json
+
+parity-record-py-replay:
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py $(REPLAY_ENV) uv run --no-sync pytest tests/replay \
+	  --attest-replay=strict --attest-egress=block --attest-strict --attest-report=$(PARITY_DIR)/py/report.replay.json
+
+parity-record-ts-default:
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run \
+	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.default.json)
+
+parity-record-ts-attest:
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts \
+	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.attest.json)
+
+parity-record-ts-reproduction:
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts pnpm exec vitest run --config reproduction/vitest.config.ts \
+	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.reproduction.json)
+
+parity-record-ts-replay:
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
+	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.replay.json)
+
+# The check bites: two small recording/report pairs with one differing status must fail.
+check-parity-selftest:
+	$(PYTHON) scripts/verdict_parity_selftest.py
 
 capture-tests:
 	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py

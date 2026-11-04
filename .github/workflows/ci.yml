@@ -25,7 +25,9 @@ jobs:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # actions: read lets the baseline step list main's runs and download one's artifact.
+    # actions: read lets the baseline step list main's runs and download one's artifact. PR code
+    # runs later in this same job, so the token's scope (contents: read, actions: read) is the
+    # real limit on what that code can reach; the job holds no write permission.
     permissions:
       contents: read
       actions: read
@@ -51,12 +53,17 @@ jobs:
       - name: Find the baseline reports of main
         id: baseline
         if: github.event_name == 'pull_request'
+        # The baseline is optional: a lookup or download error must not fail the required job.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
-            --status success --event push --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          latest="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --status success --event push --limit 1 --json databaseId,headSha \
+            --jq '.[0] | select(. != null) | "\(.databaseId) \(.headSha)"')"
+          run_id="${latest%% *}"
+          head_sha="${latest#* }"
           if [ -z "$run_id" ]; then
             echo "::notice::No successful run of ci.yml on main yet; the viewer renders without a baseline."
             exit 0
@@ -67,10 +74,13 @@ jobs:
             echo "::notice::Run $run_id on main has no attest-reports artifact; the viewer renders without a baseline."
             exit 0
           fi
+          echo "::notice::Baseline: run $run_id ($head_sha)"
           echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
 
       - name: Download the baseline reports
+        id: baseline-dl
         if: steps.baseline.outputs.run-id != ''
+        continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: attest-reports
@@ -91,7 +101,7 @@ jobs:
       - name: make check
         env:
           ATTEST_ENGINE_PATH: ${{ steps.attest.outputs.engine-path }}
-          BASELINE_DIR: ${{ steps.baseline.outputs.run-id != '' && 'baseline-reports' || '' }}
+          BASELINE_DIR: ${{ steps.baseline-dl.outcome == 'success' && 'baseline-reports' || '' }}
         run: make check CHANNEL=edge
 
       # Uploaded right after make check for the same reason as the copy step below: replay-miss

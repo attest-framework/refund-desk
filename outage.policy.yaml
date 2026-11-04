@@ -1,0 +1,9 @@
+# Policy for `make outage`: the layer-6 judge is unreachable, so its assertions come back
+# `not_evaluated: provider_unavailable`. Same layer cap as attest.policy.yaml; the only
+# difference is `not_evaluated: warn` (exit 2), because a provider outage is not a defect
+# in the agent. attest.policy.yaml blocks it (exit 1) because there the scripted judge
+# always answers, so a missing verdict would mean the gate lost its evidence.
+layers:
+  0:  # layer 0 caps every layer together
+    max_hard_fails: 0
+not_evaluated: warn

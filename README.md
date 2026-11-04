@@ -9,7 +9,7 @@ Refund Desk is a small customer-support agent, written in Python and TypeScript,
 | Repo | Role | Tracks |
 |---|---|---|
 | [`attest-examples`](https://github.com/attest-framework/attest-examples) | One small, copyable example per feature or framework | Latest published release |
-| `refund-desk` (this repo) | One end-to-end story: incident → reproduction → fix → blocked regression | attest `main` until 1.0.0, then 1.0.x |
+| `refund-desk` (this repo) | One end-to-end story: incident → reproduction → fix → blocked regression | attest 1.0.x (released channel) and attest `main` (edge channel) |
 
 Start with `attest-examples` to copy a working setup for your framework. Read this repository to follow one incident from the first report to a merge gate that blocks its regression.
 

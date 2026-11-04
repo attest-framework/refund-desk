@@ -16,7 +16,11 @@ PYTHON := uv run --no-project --python 3.12 python
 STACK := $(PYTHON) scripts/stack.py --
 TOOLS := ../scripts ../model-server
 EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
-REQUIRE_CHANNEL = @test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
+# The report-writing suite runs embed their traces in the reports so the failure viewer can draw
+# them. Traces hold prompts, replies and tool arguments: safe here because every value is
+# synthetic (scripted model server, fake payments, the invented customer of INC-1042).
+REPORT_TRACES := ATTEST_REPORT_TRACES=1
+REQUIRE_CHANNEL =@test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
 	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
 TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp.json
 # Exits 3 when the engine the installed SDK resolves has no `trace` command (attest <= rc.1).
@@ -48,6 +52,18 @@ MUTATE_PROBE := from attest.cli.admin import engine_commands; \
 MUTATE_REQUIRE = @uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || { rc=$$?; \
   test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with the attest mutate command: the attest-engine on CHANNEL=$(CHANNEL) has no mutate command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
   exit $$rc; }
+# Exits 3 when the engine the installed SDK resolves has no `view` command (attest <= rc.4).
+VIEW_PROBE := from attest.cli.admin import engine_commands; \
+  from attest.engine_manager import resolve_engine; \
+  raise SystemExit(0 if "view" in (engine_commands(resolve_engine()) or {}) else 3)
+VIEW_REQUIRE = @uv run --project py --no-sync python -c '$(VIEW_PROBE)' || { rc=$$?; \
+  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with the attest view command: the attest-engine on CHANNEL=$(CHANNEL) has no view command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
+  exit $$rc; }
+# The failure viewer reads the four reports `make check` writes. BASELINE_DIR holds the same file
+# names from an earlier run (CI downloads the latest green main run into it); without one the
+# page says there is no baseline.
+VIEW_REPORT_NAMES := attest-report.py.json attest-report.ts.json attest-report.replay.py.json attest-report.replay.ts.json
+VIEW_OUT := $(REPORTS)/attest-report.html
 # The replay run: no provider key besides a placeholder the agent's settings need (the scripted
 # judge key from stack.mk stays: the engine needs one with ATTEST_JUDGE_BASE_URL), strict
 # replay and the egress guard on. A miss fails the test and nothing is sent to a provider.
@@ -90,7 +106,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -103,6 +119,7 @@ help:
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
+	@echo "make view [CHANNEL=edge] [BASELINE_DIR=DIR] [NO_OPEN=1]  render reports/attest-report.html from the reports of the last make check (Act 6)"
 	@echo "make edge-artifacts ATTEST_SRC=DIR    build attest from a local checkout for CHANNEL=edge"
 
 setup:
@@ -147,19 +164,21 @@ check:
 	$(MAKE) --no-print-directory check-mutate || failed="$$failed check-mutate"; \
 	echo '$(MAKE) --no-print-directory check-parity'; \
 	$(MAKE) --no-print-directory check-parity || failed="$$failed check-parity"; \
+	echo '$(MAKE) --no-print-directory check-view'; \
+	$(MAKE) --no-print-directory check-view || failed="$$failed check-view"; \
 	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
 check-py:
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
 	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
 	cd py && uv run --no-sync mypy
-	cd py && uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+	cd py && $(REPORT_TRACES) uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
 	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
 
 check-ts:
 	cd ts && node -p "'@attest-ai/core ' + require('./node_modules/@attest-ai/core/package.json').version"
 	cd ts && pnpm exec tsc --noEmit
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
+	cd ts && $(REPORT_TRACES) ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
 
 # The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
@@ -189,11 +208,11 @@ replay-types-ts:
 	cd ts && pnpm exec tsc --noEmit -p tests/replay
 
 replay-run-py:
-	cd py && $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
+	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
 	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
-	cd ts && $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
+	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
 	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
 
 # Acceptance proof: appending a sentence to the system prompt makes strict replay fail in
@@ -329,6 +348,27 @@ parity-record-ts-replay:
 # The check bites: two small recording/report pairs with one differing status must fail.
 check-parity-selftest:
 	$(PYTHON) scripts/verdict_parity_selftest.py
+
+# Act 6: the failure viewer. It renders whatever reports the suites above wrote, failed suites
+# included, so a red run still produces the page. It never opens a browser here (NO_OPEN=1); run
+# `make view` for that. An attest without `view` skips the step (the released channel).
+check-view:
+	@rc=0; uv run --project py --no-sync python -c '$(VIEW_PROBE)' || rc=$$?; \
+	if [ $$rc -eq 3 ]; then echo >&2 "skipping the failure viewer: the attest on CHANNEL=$(CHANNEL) has no view command"; exit 0; fi; \
+	test $$rc -eq 0 || exit $$rc; \
+	$(MAKE) --no-print-directory view NO_OPEN=1
+
+view:
+	$(REQUIRE_CHANNEL)
+	$(call VIEW_REQUIRE,view)
+	@reports=; baseline=; \
+	for n in $(VIEW_REPORT_NAMES); do \
+	  if [ -f "$(REPORTS)/$$n" ]; then reports="$$reports $(REPORTS)/$$n"; fi; \
+	  if [ -n "$(BASELINE_DIR)" ] && [ -f "$(BASELINE_DIR)/$$n" ]; then baseline="$$baseline --baseline $(BASELINE_DIR)/$$n"; fi; \
+	done; \
+	test -n "$$reports" || { echo >&2 "no attest reports in $(REPORTS): run make check first"; exit 1; }; \
+	echo "attest view$$reports$$baseline"; \
+	uv run --project py --no-sync attest view $$reports $$baseline --out $(VIEW_OUT) $(if $(NO_OPEN),--no-open)
 
 capture-tests:
 	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py

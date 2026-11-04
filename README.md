@@ -24,7 +24,18 @@ make setup walkthrough
 `make walkthrough` runs every act below in order on the released attest (`CHANNEL=released`, the default; `make walkthrough CHANNEL=edge` runs attest from source, see [Channels](#channels)), checks the outcome each act promises and prints one line per act. A wrong outcome prints the act, the expected and the actual result and exits 1; every command's log is kept in `reports/walkthrough/`. It takes about two minutes. The unfixed agent comes from a temporary copy of this tree with [`regression/revert-inc-1042-fix.patch`](regression/revert-inc-1042-fix.patch) applied (the change of the regression pull requests #12 and #22), so the working tree is never modified.
 
 ```text
-@@WALKTHROUGH@@
+walkthrough on the released channel (logs in reports/walkthrough/)
+Act 1: output-only tests pass; both incident traces show 2 refunds ✓
+Act 2: trace check passes; the contract reports issue_refund called 2× ✓
+Act 3a: capture verifies INC-1042: byte-identical, 0 planted secrets, tests pass ✓
+Act 3b: strict replay fails on the unfixed agent: replay miss, 0 live model calls ✓
+Act 4a: the fix passes: 0 failed, 0 live model calls · $0.00 ✓
+Act 4b: the regression is blocked: `tests/refund-desk.test.ts:88` 'effect violated: 2 refunds for O-1042 (expected 1)', policy exit 1 ✓
+Act 5a: mutation score 0.00 → 0.34: the Act 1 tests block, the contracts pass ✓
+Act 5b: the MCP-drafted contract test passes ✓
+Act 6: viewer page written: 10 tests, 0 failed, 10 traces ✓
+Act 7: outage warns: not evaluated: provider_unavailable, policy exit 2 ✓
+walkthrough: every act ended as expected
 ```
 
 

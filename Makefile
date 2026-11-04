@@ -20,7 +20,7 @@ EDGE_VARS := ATTEST_SRC ATTEST_ENGINE_PATH ATTEST_CORE_TGZ ATTEST_VITEST_TGZ
 # them. Traces hold prompts, replies and tool arguments: safe here because every value is
 # synthetic (scripted model server, fake payments, the invented customer of INC-1042).
 REPORT_TRACES := ATTEST_REPORT_TRACES=1
-REQUIRE_CHANNEL =@test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
+REQUIRE_CHANNEL = @test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
 	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
 TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp.json
 # Exits 3 when the engine the installed SDK resolves has no `trace` command (attest <= rc.1).
@@ -149,6 +149,8 @@ check:
 	$(REQUIRE_CHANNEL)
 	$(call WORLD_REQUIRE,check)
 	mkdir -p $(REPORTS)
+	@# A suite that dies before writing its report must not be shown with the last run's data.
+	rm -f $(addprefix $(REPORTS)/,$(VIEW_REPORT_NAMES)) $(VIEW_OUT)
 	@# Every suite runs and writes its report even after an earlier one fails, so CI can
 	@# annotate all failures; check still exits non-zero if any suite failed and names them.
 	@failed=; \

@@ -32,6 +32,7 @@ PATCH = ROOT / "regression" / "revert-inc-1042-fix.patch"
 # The fixtures recorded from the agent as it shipped (the commit before the fix re-recorded them).
 PRE_FIX_FIXTURES = ROOT / "regression" / "pre-fix-fixtures"
 NOT_COPIED = {".git", ".worktrees", ".stack", ".attest-edge", ".venv", "node_modules", "reports"}
+ANSI = re.compile(r"\x1b\[[0-9;]*m")  # vitest colors its summary when the environment allows
 INCIDENT_TRACES = ("trace.py.otlp.json", "trace.ts.otlp.json")
 REFUND_SPAN = "execute_tool issue_refund"
 DUPLICATE = "effect violated: 2 refunds for O-1042 (expected 1)"
@@ -133,7 +134,7 @@ class Walkthrough:
         copy = self.regression_copy()
         expected = "output-only tests pass on the unfixed agent; each incident trace has 2 refunds"
         tests = self.make_with_stack("act1", root=copy)
-        passed = len(re.findall(r"\b3 passed\b", tests.output))
+        passed = len(re.findall(r"\b3 passed\b", ANSI.sub("", tests.output)))
         if tests.code != 0 or passed != 2:
             raise ActError(
                 expected, f"the output-only tests exited {tests.code}; '3 passed' printed {passed}×"

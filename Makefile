@@ -23,42 +23,6 @@ REPORT_TRACES := ATTEST_REPORT_TRACES=1
 REQUIRE_CHANNEL = @test "$$(cat .channel 2>/dev/null)" = "$(CHANNEL)" || \
 	  { echo "installed channel is '$$(cat .channel 2>/dev/null)', not $(CHANNEL); run make setup CHANNEL=$(CHANNEL)"; exit 1; }
 TRACES := incidents/INC-1042/trace.py.otlp.json incidents/INC-1042/trace.ts.otlp.json
-# Exits 3 when the engine the installed SDK resolves has no `trace` command (attest <= rc.1).
-TRACE_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "trace" in (engine_commands(resolve_engine()) or {}) else 3)
-# Exits 3 when the engine the installed SDK resolves has no `capture` command (attest <= rc.2).
-CAPTURE_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "capture" in (engine_commands(resolve_engine()) or {}) else 3)
-# Exits 3 when the engine the installed SDK resolves has no `replay` command (attest <= rc.2).
-REPLAY_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "replay" in (engine_commands(resolve_engine()) or {}) else 3)
-REPLAY_REQUIRE = @uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no replay command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
-  exit $$rc; }
-# Exits 3 when the engine the installed SDK resolves has no `world` command (attest <= rc.2).
-WORLD_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "world" in (engine_commands(resolve_engine()) or {}) else 3)
-WORLD_REQUIRE = @uv run --project py --no-sync python -c '$(WORLD_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no world command (the payments API is an attest world). Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
-  exit $$rc; }
-# Exits 3 when the engine the installed SDK resolves has no `mutate` command (attest <= rc.3).
-MUTATE_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "mutate" in (engine_commands(resolve_engine()) or {}) else 3)
-MUTATE_REQUIRE = @uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with the attest mutate command: the attest-engine on CHANNEL=$(CHANNEL) has no mutate command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
-  exit $$rc; }
-# Exits 3 when the engine the installed SDK resolves has no `view` command (attest <= rc.4).
-VIEW_PROBE := from attest.cli.admin import engine_commands; \
-  from attest.engine_manager import resolve_engine; \
-  raise SystemExit(0 if "view" in (engine_commands(resolve_engine()) or {}) else 3)
-VIEW_REQUIRE = @uv run --project py --no-sync python -c '$(VIEW_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs an attest with the attest view command: the attest-engine on CHANNEL=$(CHANNEL) has no view command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
-  exit $$rc; }
 # The failure viewer reads the four reports `make check` writes. BASELINE_DIR holds the same file
 # names from an earlier run (CI downloads the latest green main run into it); without one the
 # page says there is no baseline.
@@ -89,14 +53,6 @@ CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
   pnpm exec attest capture --name $(CAPTURE_NAME) --world ../$(WORLD) --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
-CAPTURE_REQUIRE = @uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || { rc=$$?; \
-  test $$rc -ne 3 || echo >&2 "make $(1) needs attest >= 1.0.0-rc.3: the attest-engine on CHANNEL=$(CHANNEL) has no capture command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make $(1) CHANNEL=edge"; \
-  exit $$rc; }
-# Exit 3 when the installed SDKs have no behavior contracts (attest <= rc.1).
-CONTRACT_PROBE_PY := from attest import ExpectChain; \
-  raise SystemExit(0 if hasattr(ExpectChain, "tool_cardinality") else 3)
-CONTRACT_PROBE_TS := import { ExpectChain } from "@attest-ai/core"; \
-  process.exit(typeof ExpectChain.prototype.toolCardinality === "function" ? 0 : 3)
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
@@ -113,7 +69,7 @@ help:
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
-	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
+	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
@@ -149,7 +105,6 @@ incident:
 
 check:
 	$(REQUIRE_CHANNEL)
-	$(call WORLD_REQUIRE,check)
 	mkdir -p $(REPORTS)
 	@# A suite that dies before writing its report must not be shown with the last run's data.
 	rm -f $(addprefix $(REPORTS)/,$(VIEW_REPORT_NAMES)) $(VIEW_OUT)
@@ -170,6 +125,8 @@ check:
 	$(MAKE) --no-print-directory check-parity || failed="$$failed check-parity"; \
 	echo '$(MAKE) --no-print-directory check-view'; \
 	$(MAKE) --no-print-directory check-view || failed="$$failed check-view"; \
+	echo '$(MAKE) --no-print-directory outage'; \
+	$(MAKE) --no-print-directory outage || failed="$$failed outage"; \
 	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
 check-py:
@@ -188,19 +145,11 @@ check-ts:
 # The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
 # They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
 # vitest `exclude`) and run here, outside the policy report.
-check-capture:
-	@rc=0; uv run --project py --no-sync python -c '$(CAPTURE_PROBE)' || rc=$$?; \
-	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no capture command"; \
-	test $$rc -eq 0 || exit $$rc; \
-	$(MAKE) --no-print-directory capture-tests
+check-capture: capture-tests
 
 # The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
 # attest world for payments (the tests host it), so they call no model.
-check-replay:
-	@rc=0; uv run --project py --no-sync python -c '$(REPLAY_PROBE)' || rc=$$?; \
-	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no replay command"; \
-	test $$rc -eq 0 || exit $$rc; \
-	$(MAKE) --no-print-directory replay-tests
+check-replay: replay-tests
 
 replay-tests:
 	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
@@ -223,7 +172,6 @@ replay-run-ts:
 # both languages with the miss message. The script restores the prompt on every exit.
 replay-miss:
 	$(REQUIRE_CHANNEL)
-	$(call REPLAY_REQUIRE,replay-miss)
 	mkdir -p $(REPORTS)
 	scripts/replay-miss.sh
 
@@ -243,16 +191,10 @@ act1:
 	cd py && uv run --no-sync pytest tests/test_refund_desk.py -k '$(ACT1_PY_FILTER)' --attest-strict
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run tests/refund-desk.test.ts -t '$(ACT1_TS_FILTER)'
 
-check-mutate:
-	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
-	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no mutate command"; \
-	test $$rc -eq 0 || exit $$rc; \
-	$(MAKE) --no-print-directory mutate
+check-mutate: mutate
 
 mutate:
 	$(REQUIRE_CHANNEL)
-	$(call MUTATE_REQUIRE,mutate)
-	$(call WORLD_REQUIRE,mutate)
 	rm -rf $(MUTATE_DIR)
 	mkdir -p $(MUTATE_DIR)
 	$(STACK) $(MAKE) --no-print-directory mutate-record-act1 mutate-record-all
@@ -301,10 +243,7 @@ PARITY_DIR := $(REPORTS)/parity
 
 # The selftest and the real comparison both run, so a failing selftest cannot hide a difference table.
 check-parity:
-	@rc=0; uv run --project py --no-sync python -c '$(MUTATE_PROBE)' || rc=$$?; \
-	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) cannot record contracts (ATTEST_CONTRACTS_DIR arrived with attest mutate)"; \
-	test $$rc -eq 0 || exit $$rc; \
-	selftest=0; $(MAKE) --no-print-directory check-parity-selftest || selftest=1; \
+	@selftest=0; $(MAKE) --no-print-directory check-parity-selftest || selftest=1; \
 	$(MAKE) --no-print-directory parity || exit 1; exit $$selftest
 
 PARITY_SUITES := py-default py-attest py-reproduction py-replay ts-default ts-attest ts-reproduction ts-replay
@@ -312,7 +251,6 @@ PARITY_SUITES := py-default py-attest py-reproduction py-replay ts-default ts-at
 # Every recording runs even after one fails, then the script runs; any failure fails the target.
 parity:
 	$(REQUIRE_CHANNEL)
-	$(call WORLD_REQUIRE,parity)
 	rm -rf $(PARITY_DIR)
 	mkdir -p $(PARITY_DIR)/py $(PARITY_DIR)/ts
 	@rc=0; \
@@ -366,7 +304,6 @@ check-view:
 
 view:
 	$(REQUIRE_CHANNEL)
-	$(call VIEW_REQUIRE,view)
 	@reports=; baseline=; \
 	for n in $(VIEW_REPORT_NAMES); do \
 	  if [ -f "$(REPORTS)/$$n" ]; then reports="$$reports $(REPORTS)/$$n"; fi; \
@@ -383,12 +320,7 @@ capture-tests:
 	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
-check-reproduction:
-	@rc=0; (cd py && uv run --no-sync python -c '$(CONTRACT_PROBE_PY)') && \
-	  (cd ts && node --input-type=module -e '$(CONTRACT_PROBE_TS)') || rc=$$?; \
-	test $$rc -ne 3 || echo >&2 "the attest on CHANNEL=$(CHANNEL) has no behavior contracts (tool_cardinality)"; \
-	test $$rc -eq 0 || exit $$rc; \
-	$(MAKE) --no-print-directory reproduction
+check-reproduction: reproduction
 
 reproduction:
 	cd py && uv run --no-sync mypy reproduction
@@ -398,22 +330,16 @@ reproduction:
 
 doctor:
 	$(REQUIRE_CHANNEL)
-	@uv run --project py --no-sync python -c '$(TRACE_PROBE)' || { rc=$$?; \
-	  test $$rc -ne 3 || echo >&2 "make doctor needs attest >= 1.0.0-rc.2: the attest-engine on CHANNEL=$(CHANNEL) has no trace command. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make doctor CHANNEL=edge"; \
-	  exit $$rc; }
 	@status=0; for trace in $(TRACES); do \
 	  uv run --project py --no-sync attest trace check "$$trace" || status=1; echo; \
 	done; exit $$status
 
 flaky:
 	$(REQUIRE_CHANNEL)
-	@cd py && uv run --no-sync python ../scripts/flaky.py || { rc=$$?; \
-	  test $$rc -ne 3 || echo >&2 "make flaky needs attest >= 1.0.0-rc.2: the attest-ai on CHANNEL=$(CHANNEL) has no --attest-trials. Run it on the edge channel: make edge-artifacts ATTEST_SRC=<attest checkout> && make setup CHANNEL=edge && make flaky CHANNEL=edge"; \
-	  exit $$rc; }
+	cd py && uv run --no-sync python ../scripts/flaky.py
 
 capture:
 	$(REQUIRE_CHANNEL)
-	$(call CAPTURE_REQUIRE,capture)
 	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
 
 # Re-record: `attest capture --refresh` refuses a fixture that has a world section, so the
@@ -430,7 +356,6 @@ capture-ts:
 # byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.
 capture-check:
 	$(REQUIRE_CHANNEL)
-	$(call CAPTURE_REQUIRE,capture-check)
 	rm -rf $(CAPTURE_DIR)
 	$(STACK) $(MAKE) --no-print-directory recapture-py recapture-ts
 	cmp py/$(FIXTURE) $(CAPTURE_DIR)/py/$(CAPTURE_NAME).attest.json
@@ -468,7 +393,6 @@ walkthrough:
 # warns (exit 2) where attest.policy.yaml blocks (exit 1). Nothing here calls a paid model.
 outage:
 	$(REQUIRE_CHANNEL)
-	$(call WORLD_REQUIRE,outage)
 	$(STACK) $(PYTHON) scripts/outage.py
 
 edge-artifacts:

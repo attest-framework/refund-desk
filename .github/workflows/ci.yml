@@ -1,4 +1,4 @@
-# Demo channels (attest v1.0.0 plan, contract C6):
+# Demo channels (contract C6; attest 1.0.1 released, attest main edge):
 #   edge      this commit against attest `main`, built by setup-attest
 #   released  the latest verified-<version> tag against its published packages
 # No job calls a paid model: the scripted model server answers the agent and the
@@ -96,7 +96,7 @@ jobs:
           ATTEST_VITEST_TGZ: ${{ steps.attest.outputs.vitest-tarball }}
         run: make setup CHANNEL=edge
 
-      # make check ends with the failure viewer: reports/attest-report.html, with the baseline
+      # make check writes the failure viewer (reports/attest-report.html) before the outage act, with the baseline
       # diff when BASELINE_DIR holds main's reports.
       - name: make check
         env:
@@ -307,3 +307,26 @@ jobs:
           name: released-reports
           path: reports/
           if-no-files-found: warn
+
+  # The single check a ruleset requires. if: always() makes it report even when a needed job
+  # fails or is cancelled; a skipped job (edge on a tag push) is not a failure. It runs no repo
+  # code and reads no secret.
+  required:
+    name: required
+    needs: [edge, annotate, released]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail when any needed job failed or was cancelled
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad="$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(" ")')"
+          if [ -n "$bad" ]; then
+            echo "::error::required: failed or cancelled: $bad"
+            exit 1
+          fi

@@ -96,7 +96,7 @@ jobs:
           ATTEST_VITEST_TGZ: ${{ steps.attest.outputs.vitest-tarball }}
         run: make setup CHANNEL=edge
 
-      # make check ends with the failure viewer: reports/attest-report.html, with the baseline
+      # make check writes the failure viewer (reports/attest-report.html) before the outage act, with the baseline
       # diff when BASELINE_DIR holds main's reports.
       - name: make check
         env:

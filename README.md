@@ -264,7 +264,7 @@ The check fails on a spec whose status differs between the languages and on a sp
 
 `attest view` (on the released channel, attest 1.0.1) turns the suite reports into one self-contained HTML page: the test list, the trace tree with the failing span highlighted, expected against actual, replay or live provenance, cost, a baseline diff and (when given) the surviving mutants. It needs no server and loads nothing from outside the file. See `attest guide viewer`.
 
-`make check` runs the report-writing suites with `ATTEST_REPORT_TRACES=1` (the data here is synthetic, so embedding traces is safe) and ends with `make view`, which writes `reports/attest-report.html` from the four reports (`attest-report.{py,ts}.json` and `attest-report.replay.{py,ts}.json`). The page is written even when a suite failed.
+`make check` runs the report-writing suites with `ATTEST_REPORT_TRACES=1` (the data here is synthetic, so embedding traces is safe) and runs `make view` before the final outage act; `make view` writes `reports/attest-report.html` from the four reports (`attest-report.{py,ts}.json` and `attest-report.replay.{py,ts}.json`). The page is written even when a suite failed.
 
 - **From a pull request:** open the `edge` job of the PR's workflow run and download the `attest-report-html` artifact (it is a zip holding `attest-report.html`); open the file in a browser. On a pull request the job first downloads the `attest-reports` artifact of the latest successful run on `main` and passes it as the baseline, so the page carries a baseline-versus-head section: pass rate, cost, latency and every test whose tool sequence changed. A repository without a successful `main` run yet renders the page without a baseline and says so.
 - **Locally:** `make view CHANNEL=edge` opens the page after a `make check`; `NO_OPEN=1` only writes it; `BASELINE_DIR=<dir>` compares against the four reports of an earlier run kept in that directory. `make check` deletes the previous reports first; `make replay-miss` rewrites the two replay reports with its deliberate miss, so run `make check` again before `make view`.
@@ -285,7 +285,7 @@ make outage
 - `attest policy evaluate --policy outage.policy.yaml` exits 2: [`outage.policy.yaml`](outage.policy.yaml) is `attest.policy.yaml` with `not_evaluated: warn`;
 - the same report under `attest.policy.yaml` exits 1, which is why the two policies differ.
 
-Reports are written to `reports/outage/`. It runs on both channels and is not part of `make check`. The plan's story places the outage after the regression; the demo numbers it last (Act 7) so the existing Act 5 and Act 6 names stay.
+Reports are written to `reports/outage/`. It runs on both channels and is the last step of `make check`. The plan's story places the outage after the regression; the demo numbers it last (Act 7) so the existing Act 5 and Act 6 names stay.
 
 
 ## Run it

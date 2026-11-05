@@ -69,7 +69,7 @@ help:
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
-	@echo "make flaky [CHANNEL=edge]            seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
+	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"

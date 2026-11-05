@@ -1,6 +1,6 @@
 """Statistical verdicts and a judge budget on the flaky model server (synthetic).
 
-Run from py/ with attest >= 1.0.0-rc.2 installed (`make flaky CHANNEL=edge`).
+Run from py/ (`make flaky`).
 Each case starts scripts/stack.py with the model server failing a seeded
 fraction of chat requests (--flaky P --seed 42) and runs the happy-path test as
 20 fixed trials. The agent's OpenAI client retries a failed request twice, so a
@@ -40,22 +40,6 @@ TRIALS = 20
 BASELINE_FLAKY = "0.1"
 BASELINE_TAG = f"flaky-{BASELINE_FLAKY}"
 JUDGE_CALL_BUDGET = 1
-NEEDS_RC2 = 3
-
-
-def require_trials() -> None:
-    """Exit 3 when the installed pytest plugin has no --attest-trials (attest <= rc.1)."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "--help"],
-        cwd=PY,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        sys.exit(f"flaky: pytest --help failed:\n{proc.stdout}{proc.stderr}")
-    if "--attest-trials" not in proc.stdout:
-        sys.exit(NEEDS_RC2)
 
 
 def run_tests(name: str, flaky: str, args: list[str], env: dict[str, str]) -> dict[str, int]:
@@ -191,7 +175,6 @@ def budget_case() -> bool:
 
 
 def main() -> int:
-    require_trials()
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)

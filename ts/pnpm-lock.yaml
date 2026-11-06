@@ -25,11 +25,11 @@ importers:
         version: 7.47.0
     devDependencies:
       '@attest-ai/core':
-        specifier: 1.1.0-rc.1
-        version: 1.1.0-rc.1
+        specifier: 1.1.0-rc.2
+        version: 1.1.0-rc.2
       '@attest-ai/vitest':
-        specifier: 1.1.0-rc.1
-        version: 1.1.0-rc.1(@attest-ai/core@1.1.0-rc.1)(vitest@4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)))
+        specifier: 1.1.0-rc.2
+        version: 1.1.0-rc.2(@attest-ai/core@1.1.0-rc.2)(vitest@4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)))
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -45,8 +45,8 @@ importers:
 
 packages:
 
-  '@attest-ai/core@1.1.0-rc.1':
-    resolution: {integrity: sha512-c6qDnZ9UKAeRz/48R7ytj7/fhMqeDLCBJmO2qqGBL8w5xlaNM5SXfYY5wkPPQb4Bniq4eQ/EItw2YkA/72d+oQ==}
+  '@attest-ai/core@1.1.0-rc.2':
+    resolution: {integrity: sha512-Vf8WDXZiKh7wqv+FCLt2j94r4Cwsq9Lj37uBATc4+WBmNj3Aed0T1duhjqFvQlLwld7IpYcGU//wgBibtJqRQw==}
     engines: {node: '>=18'}
     hasBin: true
     peerDependencies:
@@ -55,8 +55,8 @@ packages:
       '@langchain/core':
         optional: true
 
-  '@attest-ai/vitest@1.1.0-rc.1':
-    resolution: {integrity: sha512-7vO3atjISZTUwuoVfkpXspOTx8OyM/0iUPniuOpkeOgMyBC99qvHi9N7pSzVUSGnqAIn2hSXne2Pgx2rxs8fog==}
+  '@attest-ai/vitest@1.1.0-rc.2':
+    resolution: {integrity: sha512-eKsfuaz9niRPSQhOOJiXeFgepssH1aWFubONr5Xs88RcqqCP3EyP5nFOHwracZ/dudXEN/4IDU83sz/TdLk5MA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@attest-ai/core': '>=1.1.0-rc'
@@ -742,11 +742,11 @@ packages:
 
 snapshots:
 
-  '@attest-ai/core@1.1.0-rc.1': {}
+  '@attest-ai/core@1.1.0-rc.2': {}
 
-  '@attest-ai/vitest@1.1.0-rc.1(@attest-ai/core@1.1.0-rc.1)(vitest@4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)))':
+  '@attest-ai/vitest@1.1.0-rc.2(@attest-ai/core@1.1.0-rc.2)(vitest@4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)))':
     dependencies:
-      '@attest-ai/core': 1.1.0-rc.1
+      '@attest-ai/core': 1.1.0-rc.2
       vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15))
 
   '@esbuild/aix-ppc64@0.28.2':

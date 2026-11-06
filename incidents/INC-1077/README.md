@@ -29,6 +29,7 @@ Ledger the incident left:
 Both agents (`py/src/refund_desk/agent.py`, `ts/src/agent.ts`) now:
 
 - sum the order's existing refunds (the refunds list filtered by `order_id`) before refunding and cap a refund to what is left of the order amount, so the refunded total per order never exceeds it; an order with nothing left refuses with `order_fully_refunded`. A refund of an amount the order already has stays an idempotent retry (INC-1042). A capped result carries `requested_amount_cents`.
+- run the read, cap and commit of a refund as one step per order (a `threading.Lock` per order in Python, a per-order promise chain in TypeScript), so two concurrent refunds of one order cannot both fit the same remaining balance. The guarantee covers callers within one agent process; the payments API has no aggregate constraint, so separate processes would need a ledger-side constraint, which is out of scope for this demo.
 - send the confirmation to the customer on the order's record, ignoring the `customer_id` the model passes.
 
 The scripted model server is unchanged, so the same session now leaves (`make incident-1077 CHANNEL=edge`):

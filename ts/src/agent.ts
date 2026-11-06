@@ -119,7 +119,10 @@ function committed(refund: { [key: string]: Json }): ToolResult {
   };
 }
 
-class Tools {
+export class Tools {
+  // Tail of each order's refund chain: a refund runs after the previous one for its order settles.
+  private readonly orderChains = new Map<string, Promise<unknown>>();
+
   constructor(private readonly settings: Settings) {}
 
   async call(name: string, args: Record<string, unknown>): Promise<ToolResult> {
@@ -162,7 +165,7 @@ class Tools {
   }
 
   /** The order as the payments API holds it, or null when there is no such order. */
-  private async orderRecord(orderId: string): Promise<{ [key: string]: Json } | null> {
+  protected async orderRecord(orderId: string): Promise<{ [key: string]: Json } | null> {
     const response = await this.request("GET", `/orders/${orderId}`);
     if (response.status === 404) return null;
     return Tools.json(response);
@@ -182,6 +185,21 @@ class Tools {
   }
 
   async issueRefund(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
+    // The remaining balance is read, capped against and committed as one step per order, so
+    // concurrent refunds of an order cannot both fit the same balance (INC-1077). The guarantee
+    // covers callers within this agent process: the payments API has no aggregate constraint, so
+    // separate processes would need a ledger-side one, which is out of scope for this demo.
+    const previous = this.orderChains.get(orderId) ?? Promise.resolve();
+    const result = previous.then(() => this.issueRefundLocked(orderId, requestedCents, reason));
+    const settled = result.catch(() => undefined);
+    this.orderChains.set(orderId, settled);
+    void settled.then(() => {
+      if (this.orderChains.get(orderId) === settled) this.orderChains.delete(orderId);
+    });
+    return result;
+  }
+
+  private async issueRefundLocked(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
     let amountCents = requestedCents;
     const existing = await this.orderRefunds(orderId);
     // A refund of an amount the order already has is a retry: its key matches the first refund's

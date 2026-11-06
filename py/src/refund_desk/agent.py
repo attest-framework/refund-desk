@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,8 @@ class Tools:
             base_url=settings.payments_base_url, timeout=settings.payments_timeout_s
         )
         self.spec_version = settings.agent_spec_version
+        self._order_locks: dict[str, threading.Lock] = {}
+        self._order_locks_guard = threading.Lock()
 
     def close(self) -> None:
         self.http.close()
@@ -120,7 +123,20 @@ class Tools:
             result["customer_id"] = order["customer_id"]
         return result
 
+    def order_lock(self, order_id: str) -> threading.Lock:
+        with self._order_locks_guard:
+            return self._order_locks.setdefault(order_id, threading.Lock())
+
     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
+        # The remaining balance is read, capped against and committed as one step per order, so
+        # concurrent refunds of an order cannot both fit the same balance (INC-1077). The
+        # guarantee covers callers within this agent process: the payments API has no aggregate
+        # constraint, so separate processes would need a ledger-side one, which is out of scope
+        # for this demo.
+        with self.order_lock(order_id):
+            return self._issue_refund_locked(order_id, amount_cents, reason)
+
+    def _issue_refund_locked(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
         requested_cents = amount_cents
         existing = self.order_refunds(order_id)
         # A refund of an amount the order already has is a retry: its key matches the first

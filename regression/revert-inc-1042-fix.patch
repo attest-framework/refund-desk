@@ -1,5 +1,5 @@
 diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
-index 7e44e24..a3eeced 100644
+index d1bed0e..6db41f0 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
 @@ -2,7 +2,6 @@
@@ -9,8 +9,8 @@ index 7e44e24..a3eeced 100644
 -import hashlib
  import json
  import os
- from dataclasses import dataclass
-@@ -62,20 +61,6 @@ def canonical_json(value: Any) -> str:
+ import threading
+@@ -63,20 +62,6 @@ def canonical_json(value: Any) -> str:
      return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
  
  
@@ -31,7 +31,7 @@ index 7e44e24..a3eeced 100644
  class Tools:
      def __init__(self, settings: Settings) -> None:
          self.http = httpx.Client(
-@@ -135,23 +120,24 @@ class Tools:
+@@ -151,23 +136,24 @@ class Tools:
              if remaining <= 0:
                  return {"error": "order_fully_refunded", "order_id": order_id}
              amount_cents = min(amount_cents, remaining)
@@ -64,7 +64,7 @@ index 7e44e24..a3eeced 100644
          if amount_cents != requested_cents:
              refund["requested_amount_cents"] = requested_cents
          return refund
-@@ -162,13 +148,6 @@ class Tools:
+@@ -178,13 +164,6 @@ class Tools:
          refunds: list[dict[str, Any]] = response.json()["refunds"]
          return refunds
  
@@ -79,7 +79,7 @@ index 7e44e24..a3eeced 100644
          response = self.http.post("/notifications", json={"order_id": order_id, "message": message})
          response.raise_for_status()
 diff --git a/ts/src/agent.ts b/ts/src/agent.ts
-index c55e7ac..c968d00 100644
+index 0c445ea..792cb6c 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
 @@ -1,5 +1,4 @@
@@ -106,10 +106,10 @@ index c55e7ac..c968d00 100644
 -  };
 -}
 -
- class Tools {
-   constructor(private readonly settings: Settings) {}
- 
-@@ -140,15 +125,10 @@ class Tools {
+ export class Tools {
+   // Tail of each order's refund chain: a refund runs after the previous one for its order settles.
+   private readonly orderChains = new Map<string, Promise<unknown>>();
+@@ -143,15 +128,10 @@ export class Tools {
      throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
    }
  
@@ -127,7 +127,7 @@ index c55e7ac..c968d00 100644
        body: body === undefined ? undefined : JSON.stringify(body),
        signal: AbortSignal.timeout(this.settings.paymentsTimeoutMs),
      });
-@@ -196,24 +176,17 @@ class Tools {
+@@ -214,24 +194,17 @@ export class Tools {
        if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
        amountCents = Math.min(amountCents, remaining);
      }
@@ -159,7 +159,7 @@ index c55e7ac..c968d00 100644
        }
        throw error;
      }
-@@ -221,7 +194,13 @@ class Tools {
+@@ -239,7 +212,13 @@ export class Tools {
        const body = (await response.json()) as { error: string };
        return { error: field(body, "error"), order_id: orderId };
      }
@@ -174,7 +174,7 @@ index c55e7ac..c968d00 100644
      if (amountCents !== requestedCents) refund.requested_amount_cents = requestedCents;
      return refund;
    }
-@@ -232,12 +211,6 @@ class Tools {
+@@ -250,12 +229,6 @@ export class Tools {
      return ((await response.json()) as { refunds: { [key: string]: Json }[] }).refunds;
    }
  

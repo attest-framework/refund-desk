@@ -12,9 +12,11 @@ traces to .stack/incident-traces/ (incidents/INC-1042/ holds the frozen traces o
 double-refund agent, which this script never touches) and compare the span structure of both
 traces with each other and with scripts/span-structure.txt (the current agent's).
 
-INC-1077: require the incident's ledger (R-0001 and R-0002 for O-2077, 13800 cents of a 12600
-order, and N-0001 to C-0311), write the traces to incidents/INC-1077/ and compare the span
-structure of both traces with each other and with incidents/INC-1077/span-structure.txt.
+INC-1077: require the fixed agent's ledger (R-0001 $12.00 and R-0002 $114.00 for O-2077, the
+whole-order request capped to what is left of the 12600-cent order, and N-0001 to C-0744), write
+the traces to .stack/incident-1077-traces/ (incidents/INC-1077/ holds the frozen traces of the
+incident agent, which this script never touches) and compare the span structure of both traces
+with each other and with scripts/span-structure-1077.txt (the current agent's).
 
 Any difference exits 1. Pass --update-structure to rewrite the structure file after an intended
 agent change.
@@ -53,6 +55,7 @@ class Incident:
     order_id: str
     order_cents: int
     expected_refunds: int
+    expected_refunded_cents: int | None  # sum over the order's refunds; None = not checked
     expected_recipients: tuple[str, ...]  # customer_id of each notification; () = not checked
     agent_spec_version: str
     world: Path
@@ -70,6 +73,7 @@ INCIDENTS = {
         order_id="O-1042",
         order_cents=8400,
         expected_refunds=1,
+        expected_refunded_cents=None,
         expected_recipients=(),
         agent_spec_version="1",
         world=ROOT / "world" / "payments-inc-1042.world.yaml",
@@ -81,11 +85,12 @@ INCIDENTS = {
         order_id="O-2077",
         order_cents=12600,
         expected_refunds=2,
-        expected_recipients=("C-0311",),
+        expected_refunded_cents=12600,
+        expected_recipients=("C-0744",),
         agent_spec_version="2",
         world=ROOT / "world" / "payments-inc-1077.world.yaml",
-        structure=ROOT / "incidents" / "INC-1077" / "span-structure.txt",
-        trace_dir=ROOT / "incidents" / "INC-1077",
+        structure=ROOT / "scripts" / "span-structure-1077.txt",
+        trace_dir=ROOT / ".stack" / "incident-1077-traces",
     ),
 }
 
@@ -136,6 +141,11 @@ def print_ledger(
         problems.append(
             f"{lang} agent left {len(for_order)} refunds for {order_id} "
             f"(expected {incident.expected_refunds})"
+        )
+    if incident.expected_refunded_cents is not None and total != incident.expected_refunded_cents:
+        problems.append(
+            f"{lang} agent refunded {total} cents of {order_id} "
+            f"(expected {incident.expected_refunded_cents})"
         )
     if incident.expected_recipients:
         recipients = tuple(n.get("customer_id") for n in notifications)

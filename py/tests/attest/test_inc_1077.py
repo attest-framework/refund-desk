@@ -4,8 +4,9 @@ The partial-refund agent (agent-spec/v2) refunded O-2077 twice, $12.00 and then 
 a $126.00 order, and sent the notification to the customer of another order (C-0311 instead of
 C-0744). The fixture holds that run and the INC-1077 world's final state; the contracts below fail
 on it, and these tests assert exactly how (contract C6: reproduction tests are permanent
-`inspect()` assertions, so they stay green and prove each contract catches the bug). The strict
-replay of the agent against this fixture is tests/replay/test_inc_1077_replay.py.
+`inspect()` assertions, so they stay green and prove each contract catches the bug). The
+fixture is frozen in incidents/INC-1077/; the fixed agent's own capture is tested in
+tests/attest/test_inc_1077_fixed.py.
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ from pathlib import Path
 from attest import ExpectChain, expect, load_fixture, related
 from attest.plugin import AttestEngineFixture
 
-FIXTURE = load_fixture(Path(__file__).parent / "fixtures/inc-1077.attest.json")
+FIXTURE = load_fixture(
+    Path(__file__).resolve().parents[3] / "incidents" / "INC-1077" / "fixture.py.attest.json"
+)
 
 
 def contracts() -> ExpectChain:

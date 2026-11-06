@@ -1,5 +1,5 @@
 diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
-index 4b9bd96..8aa8cc2 100644
+index d1bed0e..6db41f0 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
 @@ -2,7 +2,6 @@
@@ -9,8 +9,8 @@ index 4b9bd96..8aa8cc2 100644
 -import hashlib
  import json
  import os
- from dataclasses import dataclass
-@@ -62,20 +61,6 @@ def canonical_json(value: Any) -> str:
+ import threading
+@@ -63,20 +62,6 @@ def canonical_json(value: Any) -> str:
      return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
  
  
@@ -31,10 +31,10 @@ index 4b9bd96..8aa8cc2 100644
  class Tools:
      def __init__(self, settings: Settings) -> None:
          self.http = httpx.Client(
-@@ -114,32 +99,24 @@ class Tools:
-         return result
- 
-     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
+@@ -151,23 +136,24 @@ class Tools:
+             if remaining <= 0:
+                 return {"error": "order_fully_refunded", "order_id": order_id}
+             amount_cents = min(amount_cents, remaining)
 -        # The key derives from the order and the amount, so a retry of the same refund carries the
 -        # same key and the payments API answers it with the first refund (INC-1042).
 +        # No idempotency key: a retry after a timeout is a new refund (INC-1042).
@@ -53,28 +53,33 @@ index 4b9bd96..8aa8cc2 100644
          if response.status_code in (404, 422):
              return {"error": response.json()["error"], "order_id": order_id}
          response.raise_for_status()
--        return committed(response.json())
--
+-        refund = committed(response.json())
++        stored = response.json()
++        refund = {
++            "refund_id": stored["refund_id"],
++            "order_id": stored["order_id"],
++            "amount_cents": stored["amount_cents"],
++            "status": "committed",
++        }
+         if amount_cents != requested_cents:
+             refund["requested_amount_cents"] = requested_cents
+         return refund
+@@ -178,13 +164,6 @@ class Tools:
+         refunds: list[dict[str, Any]] = response.json()["refunds"]
+         return refunds
+ 
 -    def committed_refund(self, order_id: str, amount_cents: int) -> dict[str, Any] | None:
 -        """The refund the payments API committed before the timeout, if there is one."""
--        response = self.http.get("/refunds", params={"order_id": order_id})
--        response.raise_for_status()
--        for refund in response.json()["refunds"]:
+-        for refund in self.order_refunds(order_id):
 -            if refund["amount_cents"] == amount_cents:
 -                return committed(refund)
 -        return None
-+        refund = response.json()
-+        return {
-+            "refund_id": refund["refund_id"],
-+            "order_id": refund["order_id"],
-+            "amount_cents": refund["amount_cents"],
-+            "status": "committed",
-+        }
- 
+-
      def notify_customer(self, order_id: str, message: str) -> dict[str, Any]:
          response = self.http.post("/notifications", json={"order_id": order_id, "message": message})
+         response.raise_for_status()
 diff --git a/ts/src/agent.ts b/ts/src/agent.ts
-index 2902ba0..3d5ceab 100644
+index 0c445ea..792cb6c 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
 @@ -1,5 +1,4 @@
@@ -101,10 +106,10 @@ index 2902ba0..3d5ceab 100644
 -  };
 -}
 -
- class Tools {
-   constructor(private readonly settings: Settings) {}
- 
-@@ -144,15 +129,10 @@ class Tools {
+ export class Tools {
+   // Tail of each order's refund chain: a refund runs after the previous one for its order settles.
+   private readonly orderChains = new Map<string, Promise<unknown>>();
+@@ -143,15 +128,10 @@ export class Tools {
      throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
    }
  
@@ -122,10 +127,10 @@ index 2902ba0..3d5ceab 100644
        body: body === undefined ? undefined : JSON.stringify(body),
        signal: AbortSignal.timeout(this.settings.paymentsTimeoutMs),
      });
-@@ -180,24 +160,17 @@ class Tools {
-   }
- 
-   async issueRefund(orderId: string, amountCents: number, reason: string): Promise<ToolResult> {
+@@ -214,24 +194,17 @@ export class Tools {
+       if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+       amountCents = Math.min(amountCents, remaining);
+     }
 -    // The key derives from the order and the amount, so a retry of the same refund carries the
 -    // same key and the payments API answers it with the first refund (INC-1042).
 +    // No idempotency key: a retry after a timeout is a new refund (INC-1042).
@@ -154,27 +159,31 @@ index 2902ba0..3d5ceab 100644
        }
        throw error;
      }
-@@ -205,16 +178,13 @@ class Tools {
+@@ -239,7 +212,13 @@ export class Tools {
        const body = (await response.json()) as { error: string };
        return { error: field(body, "error"), order_id: orderId };
      }
--    return committed(await Tools.json(response));
--  }
--
--  /** The refund the payments API committed before the timeout, if there is one. */
--  private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
--    const response = await this.request("GET", `/refunds?order_id=${encodeURIComponent(orderId)}`);
--    if (!response.ok) throw new Error(`payments ${response.status}: ${await response.text()}`);
--    const { refunds } = (await response.json()) as { refunds: { [key: string]: Json }[] };
--    const match = refunds.find((refund) => refund.amount_cents === amountCents);
--    return match === undefined ? null : committed(match);
-+    const refund = await Tools.json(response);
-+    return {
-+      refund_id: field(refund, "refund_id"),
-+      order_id: field(refund, "order_id"),
-+      amount_cents: field(refund, "amount_cents"),
+-    const refund = committed(await Tools.json(response));
++    const stored = await Tools.json(response);
++    const refund: ToolResult = {
++      refund_id: field(stored, "refund_id"),
++      order_id: field(stored, "order_id"),
++      amount_cents: field(stored, "amount_cents"),
 +      status: "committed",
 +    };
+     if (amountCents !== requestedCents) refund.requested_amount_cents = requestedCents;
+     return refund;
+   }
+@@ -250,12 +229,6 @@ export class Tools {
+     return ((await response.json()) as { refunds: { [key: string]: Json }[] }).refunds;
    }
  
+-  /** The refund the payments API committed before the timeout, if there is one. */
+-  private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
+-    const match = (await this.orderRefunds(orderId)).find((refund) => refund.amount_cents === amountCents);
+-    return match === undefined ? null : committed(match);
+-  }
+-
    async notifyCustomer(orderId: string, message: string): Promise<ToolResult> {
+     const response = await this.request("POST", "/notifications", { order_id: orderId, message });
+     const body = await Tools.json(response);

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,8 @@ class Tools:
             base_url=settings.payments_base_url, timeout=settings.payments_timeout_s
         )
         self.spec_version = settings.agent_spec_version
+        self._order_locks: dict[str, threading.Lock] = {}
+        self._order_locks_guard = threading.Lock()
 
     def close(self) -> None:
         self.http.close()
@@ -93,16 +96,23 @@ class Tools:
             return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
         if name == "notify_customer":
             if self.spec_version == "2":
-                return self.notify_recipient(args["customer_id"], args["order_id"], args["message"])
+                return self.notify_recipient(args["order_id"], args["message"])
             return self.notify_customer(args["order_id"], args["message"])
         raise ValueError(f"model requested unknown tool {name!r}")
 
-    def lookup_order(self, order_id: str) -> dict[str, Any]:
+    def order_record(self, order_id: str) -> dict[str, Any] | None:
+        """The order as the payments API holds it, or None when there is no such order."""
         response = self.http.get(f"/orders/{order_id}")
         if response.status_code == 404:
-            return {"error": "order_not_found", "order_id": order_id}
+            return None
         response.raise_for_status()
-        order = response.json()
+        order: dict[str, Any] = response.json()
+        return order
+
+    def lookup_order(self, order_id: str) -> dict[str, Any]:
+        order = self.order_record(order_id)
+        if order is None:
+            return {"error": "order_not_found", "order_id": order_id}
         result: dict[str, Any] = {
             "order_id": order["order_id"],
             "amount_cents": order["amount_cents"],
@@ -113,7 +123,34 @@ class Tools:
             result["customer_id"] = order["customer_id"]
         return result
 
+    def order_lock(self, order_id: str) -> threading.Lock:
+        with self._order_locks_guard:
+            return self._order_locks.setdefault(order_id, threading.Lock())
+
     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
+        # The remaining balance is read, capped against and committed as one step per order, so
+        # concurrent refunds of an order cannot both fit the same balance (INC-1077). The
+        # guarantee covers callers within this agent process: the payments API has no aggregate
+        # constraint, so separate processes would need a ledger-side one, which is out of scope
+        # for this demo.
+        with self.order_lock(order_id):
+            return self._issue_refund_locked(order_id, amount_cents, reason)
+
+    def _issue_refund_locked(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
+        requested_cents = amount_cents
+        existing = self.order_refunds(order_id)
+        # A refund of an amount the order already has is a retry: its key matches the first
+        # refund's and the payments API answers it with that refund (INC-1042), so it adds nothing.
+        if not any(refund["amount_cents"] == amount_cents for refund in existing):
+            order = self.order_record(order_id)
+            if order is None:
+                return {"error": "order_not_found", "order_id": order_id}
+            # The refunds of one order never total more than the order amount (INC-1077): a
+            # refund beyond what is left is capped to it, and a fully refunded order refuses.
+            remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
+            if remaining <= 0:
+                return {"error": "order_fully_refunded", "order_id": order_id}
+            amount_cents = min(amount_cents, remaining)
         # The key derives from the order and the amount, so a retry of the same refund carries the
         # same key and the payments API answers it with the first refund (INC-1042).
         try:
@@ -130,13 +167,20 @@ class Tools:
         if response.status_code in (404, 422):
             return {"error": response.json()["error"], "order_id": order_id}
         response.raise_for_status()
-        return committed(response.json())
+        refund = committed(response.json())
+        if amount_cents != requested_cents:
+            refund["requested_amount_cents"] = requested_cents
+        return refund
+
+    def order_refunds(self, order_id: str) -> list[dict[str, Any]]:
+        response = self.http.get("/refunds", params={"order_id": order_id})
+        response.raise_for_status()
+        refunds: list[dict[str, Any]] = response.json()["refunds"]
+        return refunds
 
     def committed_refund(self, order_id: str, amount_cents: int) -> dict[str, Any] | None:
         """The refund the payments API committed before the timeout, if there is one."""
-        response = self.http.get("/refunds", params={"order_id": order_id})
-        response.raise_for_status()
-        for refund in response.json()["refunds"]:
+        for refund in self.order_refunds(order_id):
             if refund["amount_cents"] == amount_cents:
                 return committed(refund)
         return None
@@ -146,8 +190,17 @@ class Tools:
         response.raise_for_status()
         return {"notification_id": response.json()["notification_id"], "status": "sent"}
 
-    def notify_recipient(self, customer_id: str, order_id: str, message: str) -> dict[str, Any]:
-        """Agent-spec v2: the notification names the customer it goes to and the channel."""
+    def notify_recipient(self, order_id: str, message: str) -> dict[str, Any]:
+        """Agent-spec v2: the notification names the customer it goes to and the channel.
+
+        The recipient is the customer of the order's record, never the customer_id the model
+        passes: a session that looked up another customer's order earlier must not send this
+        order's confirmation there (INC-1077).
+        """
+        order = self.order_record(order_id)
+        if order is None:
+            return {"error": "order_not_found", "order_id": order_id}
+        customer_id = order["customer_id"]
         response = self.http.post(
             "/notifications",
             json={

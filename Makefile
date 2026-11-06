@@ -63,13 +63,15 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup policy-file incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make incident-1077 [CHANNEL=edge]     reproduce INC-1077 (over-refund, wrong recipient); writes incidents/INC-1077/trace.*.otlp.json"
-	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
+	@echo "make check [CHANNEL=released|edge] [BASELINE_DIR=DIR] [PYTEST_XDIST=-n auto]  lint, type-check and run the attest tests;"
+	@echo "                                     BASELINE_DIR holds main's four attest-report*.json and enables block_on_regression,"
+	@echo "                                     PYTEST_XDIST runs the Python suites in parallel (needs pytest-xdist)"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
@@ -152,8 +154,8 @@ policy-file:
 ifeq ($(BASELINE_DIR),)
 	@echo "BASELINE_DIR is empty: block_on_regression is not evaluated"
 else
-	@test -f "$(BASELINE_ABS)/attest-report.py.json" && test -f "$(BASELINE_ABS)/attest-report.ts.json" || \
-	  { echo "BASELINE_DIR $(BASELINE_DIR) lacks attest-report.py.json or attest-report.ts.json"; exit 1; }
+	@for n in $(VIEW_REPORT_NAMES); do test -f "$(BASELINE_ABS)/$$n" || \
+	  { echo "BASELINE_DIR $(BASELINE_DIR) lacks $$n"; exit 1; }; done
 endif
 
 # Parallel workers for the Python suites, e.g. PYTEST_XDIST="-n auto" (pytest-xdist).
@@ -185,10 +187,20 @@ check-capture: capture-tests
 
 # The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
 # attest world for payments (the tests host it), so they call no model.
-check-replay: replay-tests
+check-replay: replay-tests replay-gate
 
 replay-tests:
 	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
+
+# The replay reports are gated like the live ones: with BASELINE_DIR they are pinned as
+# main-replay-py / main-replay-ts and evaluated with --baseline.
+replay-gate: policy-file
+ifneq ($(BASELINE_DIR),)
+	cd py && uv run --no-sync attest baseline pin --tag main-replay-py --report $(BASELINE_ABS)/attest-report.replay.py.json
+	cd ts && pnpm exec attest baseline pin --tag main-replay-ts --report $(BASELINE_ABS)/attest-report.replay.ts.json
+endif
+	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.replay.py.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-replay-py)
+	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.replay.ts.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-replay-ts)
 
 replay-types-py:
 	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py

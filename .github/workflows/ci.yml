@@ -10,8 +10,9 @@ on:
   push:
     branches: [main]
     tags: ["verified-*"]
-  # The nightly run: the walkthrough on the released channel (latest verified-* tag). Scheduled
-  # workflows run on the default branch only.
+  # The nightly run: the walkthrough on the released channel (latest verified-* tag) and the edge
+  # job, which refreshes main's baseline artifact. Scheduled workflows run on the default branch
+  # only.
   schedule:
     - cron: "17 5 * * *"
   workflow_dispatch:
@@ -20,13 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   edge:
     name: edge (attest main)
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # actions: read lets the baseline step list main's runs and download one's artifact. PR code
@@ -50,10 +51,12 @@ jobs:
         with:
           package_json_file: ts/package.json
 
-      # A pull request is gated against the reports of the latest successful push run on main
+      # A pull request is gated against the reports of the latest successful push, workflow_dispatch or
+      # schedule run on main (the nightly runs edge too, so the artifact is refreshed daily and
+      # cannot expire on a quiet main)
       # (artifact attest-reports, uploaded below): an assertion that passed there and does not
       # pass now blocks (block_on_regression), and so does a baselined assertion that vanished.
-      # Bootstrap: when main has no successful push run yet, there is nothing to compare with;
+      # Bootstrap: when main has no successful run of those events yet, there is nothing to compare with;
       # that is logged as a warning and the run goes on without the baseline. Every other case
       # (a run without a usable artifact, an API or download error) fails the job.
       - name: Find the baseline reports of main
@@ -64,10 +67,10 @@ jobs:
         run: |
           set -euo pipefail
           runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
-            --status success --event push --limit 20 --json databaseId,headSha)"
+            --status success --json databaseId,headSha,event --limit 40)"
+          runs="$(echo "$runs" | jq -c '[.[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "schedule")][:20]')"
           if [ "$(echo "$runs" | jq length)" -eq 0 ]; then
-            echo "::warning::Baseline bootstrap: no successful push run of ci.yml on main yet, so this run has no baseline and block_on_regression is not enforced. The first green push to main creates it."
-            echo "bootstrap=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Baseline bootstrap: no successful push, workflow_dispatch or schedule run of ci.yml on main yet, so this run has no baseline and block_on_regression is not enforced. The first green push to main creates it."
             exit 0
           fi
           while read -r run_id head_sha; do
@@ -79,7 +82,7 @@ jobs:
               exit 0
             fi
           done < <(echo "$runs" | jq -r '.[] | "\(.databaseId) \(.headSha)"')
-          echo "::error::The last $(echo "$runs" | jq length) successful push runs on main have no unexpired attest-reports artifact; run ci.yml on main (push or workflow_dispatch), then re-run this job."
+          echo "::error::The last $(echo "$runs" | jq length) successful push, workflow_dispatch or schedule runs on main have no unexpired attest-reports artifact. Recovery: run ci.yml on main (Actions, ci, Run workflow, branch main, or: gh workflow run ci.yml --ref main), wait for it to pass, then re-run this job."
           exit 1
 
       - name: Download the baseline reports
@@ -132,6 +135,7 @@ jobs:
             reports/attest-report.replay.py.json
             reports/attest-report.replay.ts.json
           if-no-files-found: warn
+          retention-days: 30
 
       # pr-annotate resolves each row's `file` (relative to the test rootdir) by prefixing the
       # report's own directory, so the reports go next to the tests that wrote them. This runs

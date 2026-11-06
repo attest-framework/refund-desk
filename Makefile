@@ -74,8 +74,7 @@ INC1077_MYPY := tests/attest/test_inc_1077.py tests/attest/test_inc_1077_fixed.p
 INC1077_REPLAY_MYPY := tests/replay/test_inc_1077_replay.py
 INC1077_PYTEST_IGNORE :=
 INC1077_VITEST_EXCLUDE :=
-REPRO_REPLAY_PY := tests/replay/test_inc_1077_replay.py
-REPRO_REPLAY_TS := tests/replay/inc-1077.test.ts
+LIVE_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1042.py --ignore=tests/attest/test_inc_1077.py
 TSC_ATTEST := tsconfig.json
 TSC_REPLAY := tsconfig.json
 else
@@ -83,8 +82,7 @@ INC1077_MYPY :=
 INC1077_REPLAY_MYPY :=
 INC1077_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1077.py --ignore=tests/attest/test_inc_1077_fixed.py --ignore=tests/replay/test_inc_1077_replay.py
 INC1077_VITEST_EXCLUDE := --exclude '**/inc-1077.test.ts' --exclude '**/inc-1077-fixed.test.ts'
-REPRO_REPLAY_PY :=
-REPRO_REPLAY_TS :=
+LIVE_PYTEST_IGNORE := --ignore=tests/attest
 TSC_ATTEST := tsconfig.released.json
 TSC_REPLAY := tsconfig.released.json
 endif
@@ -94,7 +92,7 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts capture-refresh capture-refresh-py capture-refresh-ts capture-1077 capture-1077-py capture-1077-ts capture-check-1077 recapture-1077-py recapture-1077-ts replay-repro-py replay-repro-ts edge-artifacts clean
+.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts capture-refresh capture-refresh-py capture-refresh-ts capture-1077 capture-1077-py capture-1077-ts capture-check-1077 recapture-1077-py recapture-1077-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -199,7 +197,7 @@ check-py: policy-file
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
 	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
 	cd py && uv run --no-sync mypy
-	cd py && $(REPORT_TRACES) uv run --no-sync pytest $(PYTEST_XDIST) --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+	cd py && $(REPORT_TRACES) uv run --no-sync pytest $(PYTEST_XDIST) $(LIVE_PYTEST_IGNORE) --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
 ifneq ($(BASELINE_DIR),)
 	cd py && uv run --no-sync attest baseline pin --tag main-py --report $(BASELINE_ABS)/attest-report.py.json
 endif
@@ -214,9 +212,9 @@ ifneq ($(BASELINE_DIR),)
 endif
 	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-ts)
 
-# The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
-# They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
-# vitest `exclude`) and run here, outside the policy report.
+# Frozen incident reproductions assert known violations and stay outside the policy reports.
+# On edge, INC-1077's fixed-capture and current-agent contracts run in the live reports instead;
+# its strict replay contracts run in the replay reports. Released rc.3 skips all INC-1077 tests.
 check-capture: capture-tests
 
 # The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
@@ -224,7 +222,7 @@ check-capture: capture-tests
 check-replay: replay-tests replay-gate
 
 replay-tests:
-	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts replay-repro-py replay-repro-ts
+	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
 
 # The replay reports are gated like the live ones: with BASELINE_DIR they are pinned as
 # main-replay-py / main-replay-ts and evaluated with --baseline.
@@ -243,21 +241,12 @@ replay-types-ts:
 	cd ts && pnpm exec tsc --noEmit -p tests/replay/$(TSC_REPLAY)
 
 replay-run-py:
-	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest $(PYTEST_XDIST) tests/replay --ignore=tests/replay/test_inc_1077_replay.py --attest-replay=strict --attest-egress=block \
+	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest $(PYTEST_XDIST) tests/replay $(INC1077_PYTEST_IGNORE) --attest-replay=strict --attest-egress=block \
 	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
-	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts --exclude '**/inc-1077.test.ts' \
+	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
 	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
-
-# The INC-1077 replay tests replay the fixed agent against its capture and assert that the
-# relational contracts hold. They run with no report, as the INC-1042 reproduction tests do. The
-# released channel (rc.3) has no relational contracts and skips them.
-replay-repro-py:
-	$(if $(REPRO_REPLAY_PY),cd py && $(REPLAY_ENV) uv run --no-sync pytest $(REPRO_REPLAY_PY) --attest-replay=strict --attest-egress=block --attest-strict)
-
-replay-repro-ts:
-	$(if $(REPRO_REPLAY_TS),cd ts && $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts tests/replay/inc-1077.test.ts)
 
 # Acceptance proof: appending a sentence to the system prompt makes strict replay fail in
 # both languages with the miss message. The script restores the prompt on every exit.
@@ -313,15 +302,15 @@ mutate-record-act1:
 # Every contract suite: the default scope (Act 1 and the Act 4 effect test), the captured-fixture
 # tests (tests/attest), the reproduction tests and the strict-replay tests.
 mutate-record-all:
-	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay \
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest $(LIVE_PYTEST_IGNORE) --ignore=tests/replay \
 	  --attest-strict --attest-report=$(MUTATE_DIR)/attest-report.contracts.py.json
-	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py $(INC1077_PYTEST_IGNORE) --attest-strict
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest reproduction
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) uv run --no-sync pytest tests/replay $(INC1077_PYTEST_IGNORE) \
 	  --attest-replay=strict --attest-egress=block --attest-strict
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run \
 	  $(call VITEST_REPORT,$(MUTATE_DIR)/attest-report.contracts.ts.json)
-	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts' $(INC1077_VITEST_EXCLUDE)
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all pnpm exec vitest run --config reproduction/vitest.config.ts
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
 
@@ -352,11 +341,11 @@ parity:
 # One target per suite (default scope, captured-fixture tests, reproduction, strict replay) so -k
 # keeps going past a failing one.
 parity-record-py-default:
-	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay \
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest $(LIVE_PYTEST_IGNORE) --ignore=tests/replay \
 	  --attest-strict --attest-report=$(PARITY_DIR)/py/report.default.json
 
 parity-record-py-attest:
-	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict \
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py $(INC1077_PYTEST_IGNORE) --attest-strict \
 	  --attest-report=$(PARITY_DIR)/py/report.attest.json
 
 parity-record-py-reproduction:
@@ -372,7 +361,7 @@ parity-record-ts-default:
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.default.json)
 
 parity-record-ts-attest:
-	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts' $(INC1077_VITEST_EXCLUDE) \
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.attest.json)
 
 parity-record-ts-reproduction:
@@ -405,10 +394,10 @@ view:
 	uv run --project py --no-sync attest view $$reports $$baseline --out $(VIEW_OUT) $(if $(NO_OPEN),--no-open)
 
 capture-tests:
-	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py $(INC1077_MYPY)
-	cd py && uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict
+	cd py && uv run --no-sync mypy src tests/attest/test_inc_1042.py $(INC1077_MYPY)
+	cd py && uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py $(INC1077_PYTEST_IGNORE) --attest-strict
 	cd ts && pnpm exec tsc --noEmit -p tests/attest/$(TSC_ATTEST)
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts' $(INC1077_VITEST_EXCLUDE)
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
 check-reproduction: reproduction

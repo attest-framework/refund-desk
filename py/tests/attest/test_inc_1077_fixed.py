@@ -10,10 +10,16 @@ fixture is tests/replay/test_inc_1077_replay.py.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from attest import ExpectChain, expect, load_fixture, related
+import pytest
+from attest import Agent, ExpectChain, expect, load_fixture, related
 from attest.plugin import AttestEngineFixture
+from attest.world import WorldSession
+from opentelemetry import trace
+
+from refund_desk.agent import Settings, run
 
 FIXTURE = load_fixture(Path(__file__).parent / "fixtures/inc-1077.attest.json")
 
@@ -42,12 +48,34 @@ def trace_contracts() -> ExpectChain:
 def test_inc_1077_fixed_agent_run_meets_relational_contracts(
     attest: AttestEngineFixture,
 ) -> None:
-    result = attest.inspect(relational_contracts())
-
-    assert [row.status for row in result.assertion_results] == ["pass", "pass"]
+    attest.evaluate(relational_contracts())
 
 
 def test_inc_1077_fixed_agent_run_meets_trace_contracts(attest: AttestEngineFixture) -> None:
-    result = attest.inspect(trace_contracts())
+    attest.evaluate(trace_contracts())
 
-    assert [row.status for row in result.assertion_results] == ["pass"] * 5
+
+def test_inc_1077_current_agent_meets_relational_contracts(
+    attest: AttestEngineFixture,
+    payments_world: Callable[[str], WorldSession],
+    incident_1077_request: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gate the actual agent too: a frozen passing capture cannot expose a code regression."""
+    monkeypatch.setenv("AGENT_SPEC_VERSION", "2")
+    world = payments_world("payments-inc-1077")
+    result = Agent(
+        "refund-desk",
+        fn=lambda builder: {
+            "message": run(
+                Settings.from_env(),
+                incident_1077_request["customer_message"],
+                trace.get_tracer("refund-desk"),
+            )
+        },
+    ).run()
+    chain = expect(result)
+    effects = chain.world(world.state())
+    effects.matches("notifications", "customer_id", related("orders", "customer_id", on="order_id"))
+    effects.sum("refunds", "amount_cents", at_most=related("orders", "amount_cents", on="order_id"))
+    attest.evaluate(chain)

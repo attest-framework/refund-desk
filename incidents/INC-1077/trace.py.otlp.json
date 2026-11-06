@@ -1,0 +1,636 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "c4f705db-29a5-4e84-b07c-6c5d17a06a0b"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "refund-desk-py"
+            }
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "value": {
+              "stringValue": "python"
+            }
+          },
+          {
+            "key": "telemetry.sdk.name",
+            "value": {
+              "stringValue": "opentelemetry"
+            }
+          },
+          {
+            "key": "telemetry.sdk.version",
+            "value": {
+              "stringValue": "1.45.2"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "refund-desk"
+          },
+          "spans": [
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "0c71b141d0a6b10b",
+              "name": "invoke_agent refund-desk",
+              "kind": 1,
+              "startTimeUnixNano": "1793972523891135000",
+              "endTimeUnixNano": "1793972526227568000",
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "refund-desk"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "invoke_agent"
+                  }
+                },
+                {
+                  "key": "refund_desk.reply",
+                  "value": {
+                    "stringValue": "Your refund of $126.00 has been processed."
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              }
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "be6ab51f0e66518c",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972523891204000",
+              "endTimeUnixNano": "1793972525380314000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "tool_calls"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "167"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "43"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "a35d38aca59b73d0",
+              "name": "execute_tool lookup_order",
+              "kind": 1,
+              "startTimeUnixNano": "1793972525383273000",
+              "endTimeUnixNano": "1793972525536555000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"order_id\":\"O-1042\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_1"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "lookup_order"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "43476d0062f674bb",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972525536703000",
+              "endTimeUnixNano": "1793972525713561000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "tool_calls"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "255"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "43"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "757896dd5b1cf888",
+              "name": "execute_tool lookup_order",
+              "kind": 1,
+              "startTimeUnixNano": "1793972525713663000",
+              "endTimeUnixNano": "1793972525753679000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"order_id\":\"O-2077\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_2"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "lookup_order"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "203aebc8f36f269d",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972525761035000",
+              "endTimeUnixNano": "1793972525797782000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "tool_calls"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "343"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "57"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "ae4b0ffb748518af",
+              "name": "execute_tool issue_refund",
+              "kind": 1,
+              "startTimeUnixNano": "1793972525797847000",
+              "endTimeUnixNano": "1793972525872831000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":1200,\"order_id\":\"O-2077\",\"reason\":\"shipping refund\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_3"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":1200,\"order_id\":\"O-2077\",\"refund_id\":\"R-0001\",\"status\":\"committed\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "issue_refund"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "b176dee0f4a130b9",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972525872914000",
+              "endTimeUnixNano": "1793972525927606000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "tool_calls"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "439"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "58"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "3b07af9ed9f0005e",
+              "name": "execute_tool issue_refund",
+              "kind": 1,
+              "startTimeUnixNano": "1793972525928032000",
+              "endTimeUnixNano": "1793972526037764000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":12600,\"order_id\":\"O-2077\",\"reason\":\"whole order refund\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_4"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"amount_cents\":12600,\"order_id\":\"O-2077\",\"refund_id\":\"R-0002\",\"status\":\"committed\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "issue_refund"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "ce92269dcdb2426a",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972526037834000",
+              "endTimeUnixNano": "1793972526213025000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "tool_calls"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "536"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "70"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "684bd6bf785967b2",
+              "name": "execute_tool notify_customer",
+              "kind": 1,
+              "startTimeUnixNano": "1793972526213090000",
+              "endTimeUnixNano": "1793972526217975000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "stringValue": "{\"customer_id\":\"C-0311\",\"message\":\"Your refund of $126.00 for order O-2077 has been processed.\",\"order_id\":\"O-2077\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_5"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "stringValue": "{\"notification_id\":\"N-0001\",\"status\":\"sent\"}"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "notify_customer"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            },
+            {
+              "traceId": "115e7447a7e755e31fba261081fd6525",
+              "spanId": "3b47bf845b28d4ae",
+              "name": "chat refund-desk-scripted",
+              "kind": 3,
+              "startTimeUnixNano": "1793972526218047000",
+              "endTimeUnixNano": "1793972526227536000",
+              "attributes": [
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.finish_reasons",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "stop"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "refund-desk-scripted"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "634"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "20"
+                  }
+                }
+              ],
+              "status": {
+                "code": 0
+              },
+              "parentSpanId": "0c71b141d0a6b10b"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

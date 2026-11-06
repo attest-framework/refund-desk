@@ -1,0 +1,48 @@
+# The payments and support API the Refund Desk agents call (synthetic), as an attest world, for
+# INC-1077: no faults. The incident is in the agent's behavior, not in payments: O-2077 ($126.00,
+# C-0744) is refunded twice and the confirmation names C-0311, the customer of O-1042. Every
+# notification carries the customer_id and channel it was sent to (agent-spec v2).
+# `attest-engine world` hosts it on a loopback port and puts its base URL in PAYMENTS_BASE_URL;
+# every run starts from this file, so nothing resets.
+#
+# payments.world.yaml is the same world without O-2077, with another seed. A world file has no
+# include, so keep the two in step: they differ only in the seed and the O-2077 order.
+world_version: 1
+base_url_env: PAYMENTS_BASE_URL
+seed: 1077
+resources:
+  orders:
+    path: /orders
+    id_field: order_id
+    routes: [get]
+    seed:
+      - order_id: O-1042
+        customer_id: C-0311
+        item: Ceramic pour-over set (synthetic)
+        amount_cents: 8400
+        currency: USD
+        status: delivered
+      - order_id: O-2001
+        customer_id: C-0520
+        item: Linen apron (synthetic)
+        amount_cents: 2650
+        currency: USD
+        status: delivered
+      - order_id: O-2077
+        customer_id: C-0744
+        item: Walnut serving board (synthetic)
+        amount_cents: 12600
+        currency: USD
+        status: delivered
+  refunds:
+    path: /refunds
+    id_field: refund_id
+    id_format: "R-%04d"
+    routes: [create, list, get]
+    filters: [order_id]
+    idempotency: {header: Idempotency-Key, field: idempotency_key}
+  notifications:
+    path: /notifications
+    id_field: notification_id
+    id_format: "N-%04d"
+    routes: [create]

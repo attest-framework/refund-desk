@@ -3,7 +3,9 @@
 Synthetic: every reply comes from a script in this file, never from a model.
 Two scenarios are served, selected by the request's ``model`` field:
 
-* ``refund-desk-scripted`` drives the Refund Desk agent through its tools.
+* ``refund-desk-scripted`` drives the Refund Desk agent through its tools. The conversation
+  is picked per order: the first order a registered incident names in the first user message
+  selects that incident's script (``CONVERSATIONS``); any other message gets the INC-1042 script.
 * ``refund-desk-judge`` answers attest's LLM-judge (layer 6) requests.
 
 ``--flaky P --seed S`` makes a seeded fraction P of chat requests fail with
@@ -143,6 +145,70 @@ def refund_desk_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
     raise ScriptError(f"no script step after tool {name!r}")
 
 
+def refund_desk_inc_1077_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Next assistant message of the INC-1077 script: the partial-refund agent's buggy session.
+
+    The session looked up O-1042 (customer C-0311) before O-2077 (customer C-0744). The customer
+    asks for the $12.00 shipping refund, then for the whole order: both refunds are issued, and
+    the confirmation goes to the customer of the first lookup, C-0311, not to the order's.
+    """
+    call_number = sum(1 for m in messages if m["role"] == "assistant") + 1
+    results = [
+        (tool_name_for(messages, m["tool_call_id"]), json.loads(m["content"]))
+        for m in messages
+        if m["role"] == "tool"
+    ]
+    for name, result in results:
+        if "error" in result:
+            return text(f"I could not complete {name} ({result['error']}).")
+    if messages[-1]["role"] not in ("user", "tool"):
+        raise ScriptError(f"unexpected last message role {messages[-1]['role']!r}")
+
+    if len(results) == 0:
+        return tool_call(call_number, "lookup_order", {"order_id": "O-1042"})
+    if len(results) == 1:
+        return tool_call(call_number, "lookup_order", {"order_id": "O-2077"})
+    order = results[1][1]
+    if len(results) == 2:
+        args = {"order_id": order["order_id"], "amount_cents": 1200, "reason": "shipping refund"}
+        return tool_call(call_number, "issue_refund", args)
+    if len(results) == 3:
+        args = {
+            "order_id": order["order_id"],
+            "amount_cents": order["amount_cents"],
+            "reason": "whole order refund",
+        }
+        return tool_call(call_number, "issue_refund", args)
+    refunded = results[3][1]
+    amount = dollars(int(refunded["amount_cents"]))
+    if len(results) == 4:
+        return tool_call(
+            call_number,
+            "notify_customer",
+            {
+                "customer_id": results[0][1]["customer_id"],
+                "order_id": order["order_id"],
+                "message": f"Your refund of {amount} for order {order['order_id']} "
+                "has been processed.",
+            },
+        )
+    if len(results) == 5:
+        return text(f"Your refund of {amount} has been processed.")
+    raise ScriptError(f"no script step after {len(results)} tool results")
+
+
+# Conversation registry: an order id in the first user message selects the script.
+CONVERSATIONS = {"O-2077": refund_desk_inc_1077_reply}
+
+
+def conversation_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    first_user = next((str(m["content"]) for m in messages if m["role"] == "user"), "")
+    for order_id in ORDER_ID.findall(first_user):
+        if order_id in CONVERSATIONS:
+            return CONVERSATIONS[order_id](messages)
+    return refund_desk_reply(messages)
+
+
 def judge_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
     """Scripted attest judge: score the quoted reply with a fixed rule."""
     prompt = "\n".join(str(m.get("content") or "") for m in messages if m["role"] == "user")
@@ -223,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
             self.error(400, "invalid_request_error", "streaming is not scripted")
             return
         model = request.get("model")
-        scripts = {AGENT_MODEL: ("agent", refund_desk_reply), JUDGE_MODEL: ("judge", judge_reply)}
+        scripts = {AGENT_MODEL: ("agent", conversation_reply), JUDGE_MODEL: ("judge", judge_reply)}
         if model not in scripts:
             self.error(404, "model_not_found", f"no script for model {model!r}")
             return

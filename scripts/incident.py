@@ -1,16 +1,23 @@
-"""Reproduce INC-1042 with the Python and TS agents (synthetic incident).
+"""Reproduce a synthetic incident (INC-1042 or INC-1077) with the Python and TS agents.
 
-Run inside scripts/stack.py. For each language: host a fresh attest world
-(world/payments-inc-1042.world.yaml, whose inc-1042 fault is the incident) with
-`attest-engine world`, run the agent on the incident's customer message,
-write .stack/incident-traces/trace.<lang>.otlp.json and print the ledger from the
-world's final snapshot. The engine comes from ATTEST_ENGINE_PATH.
+Run inside scripts/stack.py. Pass --incident 1042 (default) or 1077. For each language: host a
+fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault is the INC-1042
+incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077) with
+`attest-engine world`, run the agent on the incident's customer message, write
+trace.<lang>.otlp.json and print the ledger from the world's final snapshot. The engine comes
+from ATTEST_ENGINE_PATH.
 
-Then require exactly one refund for O-1042 in the ledger, and compare the span structure of
-both traces with each other and with scripts/span-structure.txt (the current agent's); any
-difference exits 1. Pass --update-structure to rewrite that file after an intended agent change.
-The traces go to .stack/incident-traces/: incidents/INC-1042/ holds the frozen traces of the
-shipped double-refund agent, which this script never touches.
+INC-1042: require exactly one refund for O-1042 in the ledger (the current agent's fix), write the
+traces to .stack/incident-traces/ (incidents/INC-1042/ holds the frozen traces of the shipped
+double-refund agent, which this script never touches) and compare the span structure of both
+traces with each other and with scripts/span-structure.txt (the current agent's).
+
+INC-1077: require the incident's ledger (R-0001 and R-0002 for O-2077, 13800 cents of a 12600
+order, and N-0001 to C-0311), write the traces to incidents/INC-1077/ and compare the span
+structure of both traces with each other and with incidents/INC-1077/span-structure.txt.
+
+Any difference exits 1. Pass --update-structure to rewrite the structure file after an intended
+agent change.
 
 Pass --lang py|ts to run one language only: its span structure is checked against
 scripts/span-structure.txt and the cross-language comparison is skipped (`attest capture`
@@ -31,16 +38,56 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-INCIDENT = ROOT / "incidents" / "INC-1042"
-STRUCTURE = ROOT / "scripts" / "span-structure.txt"
-TRACE_DIR = ROOT / ".stack" / "incident-traces"
-WORLD = ROOT / "world" / "payments-inc-1042.world.yaml"
 KIND = {0: "UNSPECIFIED", 1: "INTERNAL", 2: "SERVER", 3: "CLIENT", 4: "PRODUCER", 5: "CONSUMER"}
 STATUS = {0: "UNSET", 1: "OK", 2: "ERROR"}
+
+
+@dataclass(frozen=True)
+class Incident:
+    number: str
+    order_id: str
+    order_cents: int
+    expected_refunds: int
+    expected_recipients: tuple[str, ...]  # customer_id of each notification; () = not checked
+    agent_spec_version: str
+    world: Path
+    structure: Path
+    trace_dir: Path
+
+    @property
+    def directory(self) -> Path:
+        return ROOT / "incidents" / f"INC-{self.number}"
+
+
+INCIDENTS = {
+    "1042": Incident(
+        number="1042",
+        order_id="O-1042",
+        order_cents=8400,
+        expected_refunds=1,
+        expected_recipients=(),
+        agent_spec_version="1",
+        world=ROOT / "world" / "payments-inc-1042.world.yaml",
+        structure=ROOT / "scripts" / "span-structure.txt",
+        trace_dir=ROOT / ".stack" / "incident-traces",
+    ),
+    "1077": Incident(
+        number="1077",
+        order_id="O-2077",
+        order_cents=12600,
+        expected_refunds=2,
+        expected_recipients=("C-0311",),
+        agent_spec_version="2",
+        world=ROOT / "world" / "payments-inc-1077.world.yaml",
+        structure=ROOT / "incidents" / "INC-1077" / "span-structure.txt",
+        trace_dir=ROOT / "incidents" / "INC-1077",
+    ),
+}
 
 
 def http(method: str, url: str, body: dict[str, Any] | None = None) -> Any:
@@ -59,8 +106,10 @@ def agent_command(lang: str, message: str, trace_out: Path) -> list[str]:
             "--trace-out", str(trace_out)]  # fmt: skip
 
 
-def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> int:
-    """Print the ledger and return the number of refunds for O-1042."""
+def print_ledger(
+    incident: Incident, lang: str, state: dict[str, Any], stats: dict[str, Any]
+) -> list[str]:
+    """Print the ledger; return what differs from the incident's expected ledger."""
     refunds = state["refunds"]
     print(f"\nPayments ledger after the {lang} agent (synthetic)")
     print(f"  {'refund':<8} {'order':<8} {'amount':>8}  idempotency key")
@@ -68,21 +117,43 @@ def print_ledger(lang: str, state: dict[str, Any], stats: dict[str, Any]) -> int
         amount = f"${refund['amount_cents'] / 100:.2f}"
         key = refund.get("idempotency_key") or "-"
         print(f"  {refund['refund_id']:<8} {refund['order_id']:<8} {amount:>8}  {key}")
-    o1042 = [r for r in refunds if r["order_id"] == "O-1042"]
-    total = sum(r["amount_cents"] for r in o1042) / 100
-    print(f"  O-1042: {len(o1042)} refunds, ${total:.2f} total (order amount $84.00)")
-    print(f"  notifications: {len(state['notifications'])}  model requests: {stats['agent']}")
-    return len(o1042)
+    order_id = incident.order_id
+    for_order = [r for r in refunds if r["order_id"] == order_id]
+    total = sum(r["amount_cents"] for r in for_order)
+    order_amount = f"${incident.order_cents / 100:.2f}"
+    summary = f"{len(for_order)} refunds, ${total / 100:.2f} total (order amount {order_amount})"
+    print(f"  {order_id}: {summary}")
+    notifications = state["notifications"]
+    print(f"  notifications: {len(notifications)}  model requests: {stats['agent']}")
+    for notification in notifications:
+        if "customer_id" in notification:
+            print(
+                f"  {notification['notification_id']:<8} {notification['order_id']:<8} "
+                f"to {notification['customer_id']} ({notification['channel']})"
+            )
+    problems = []
+    if len(for_order) != incident.expected_refunds:
+        problems.append(
+            f"{lang} agent left {len(for_order)} refunds for {order_id} "
+            f"(expected {incident.expected_refunds})"
+        )
+    if incident.expected_recipients:
+        recipients = tuple(n.get("customer_id") for n in notifications)
+        if recipients != incident.expected_recipients:
+            problems.append(
+                f"{lang} agent notified {recipients} (expected {incident.expected_recipients})"
+            )
+    return problems
 
 
-def run_in_fresh_world(command: list[str]) -> tuple[str, dict[str, Any]]:
+def run_in_fresh_world(world: Path, command: list[str]) -> tuple[str, dict[str, Any]]:
     """Run the agent under its own `attest-engine world`; return its reply and the final state."""
     engine = os.environ.get("ATTEST_ENGINE_PATH")
     if not engine:
         raise SystemExit("ATTEST_ENGINE_PATH is not set: run `make incident CHANNEL=edge`")
     with tempfile.TemporaryDirectory(prefix="refund-desk-world-") as directory:
         state_out = Path(directory) / "state.json"
-        engine_command = [engine, "world", "--file", str(WORLD), "--state-out", str(state_out)]
+        engine_command = [engine, "world", "--file", str(world), "--state-out", str(state_out)]
         reply = subprocess.run(
             [*engine_command, "--", *command],
             cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True,
@@ -124,6 +195,7 @@ def span_structure(path: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
+    parser.add_argument("--incident", choices=tuple(INCIDENTS), default="1042")
     parser.add_argument("--update-structure", action="store_true")
     parser.add_argument(
         "--lang",
@@ -138,8 +210,8 @@ def main() -> int:
     parser.add_argument(
         "--trace-dir",
         type=Path,
-        default=TRACE_DIR,
-        help="write the OTLP/JSON traces here instead of .stack/incident-traces",
+        default=None,
+        help="write the OTLP/JSON traces here instead of the incident's default directory",
     )
     args = parser.parse_args()
     if args.update_structure and args.lang is not None:
@@ -147,15 +219,18 @@ def main() -> int:
     if args.in_world and args.lang is None:
         parser.error("--in-world hosts one world, so it needs --lang")
 
-    request = json.loads((INCIDENT / "request.json").read_text())
+    incident = INCIDENTS[args.incident]
+    # The agents read the spec version from the environment (stack.mk sets INC-1042's).
+    os.environ["AGENT_SPEC_VERSION"] = incident.agent_spec_version
+    request = json.loads((incident.directory / "request.json").read_text())
     # The admin API is the scripted server itself: under `attest capture`, OPENAI_BASE_URL
     # points at the recording proxy.
     model_admin = f"http://127.0.0.1:{os.environ['MODEL_PORT']}"
     structures: dict[str, list[str]] = {}
-    refunds_for_order: dict[str, int] = {}
+    problems: list[str] = []
 
     languages = (args.lang,) if args.lang is not None else ("py", "ts")
-    trace_dir = args.trace_dir.resolve()
+    trace_dir = (args.trace_dir or incident.trace_dir).resolve()
     trace_dir.mkdir(parents=True, exist_ok=True)
     for lang in languages:
         trace_out = trace_dir / f"trace.{lang}.otlp.json"
@@ -167,24 +242,26 @@ def main() -> int:
             state = http("GET", f"{os.environ['PAYMENTS_BASE_URL']}/_attest/state")["state"]
             reply_text = reply.stdout
         else:
-            reply_text, state = run_in_fresh_world(command)
+            reply_text, state = run_in_fresh_world(incident.world, command)
         print(f"  reply: {reply_text.strip()}")
         stats = http("GET", f"{model_admin}/_admin/stats")
-        refunds_for_order[lang] = print_ledger(lang, state, stats)
+        problems += print_ledger(incident, lang, state, stats)
         structures[lang] = span_structure(trace_out)
 
-    doubled = {lang: n for lang, n in refunds_for_order.items() if n != 1}
-    if doubled:
-        for lang, n in doubled.items():
-            print(f"\n{lang} agent left {n} refunds for O-1042 (expected 1)", file=sys.stderr)
+    if problems:
+        for problem in problems:
+            print(f"\n{problem}", file=sys.stderr)
         return 1
 
     if args.lang is not None:
         expected = "\n".join(structures[args.lang]) + "\n"
-        if STRUCTURE.read_text() != expected:
-            print(f"\n{args.lang} span structure differs from {STRUCTURE.name}", file=sys.stderr)
+        if incident.structure.read_text() != expected:
+            print(
+                f"\n{args.lang} span structure differs from {incident.structure.name}",
+                file=sys.stderr,
+            )
             return 1
-        print(f"\n{args.lang} span structure matches {STRUCTURE.relative_to(ROOT)}")
+        print(f"\n{args.lang} span structure matches {incident.structure.relative_to(ROOT)}")
         return 0
     if structures["py"] != structures["ts"]:
         print("\nspan structure differs between trace.py and trace.ts:", file=sys.stderr)
@@ -192,15 +269,20 @@ def main() -> int:
         sys.stderr.writelines(f"{line.rstrip()}\n" for line in diff)
         return 1
     expected = "\n".join(structures["py"]) + "\n"
+    rerun = "make incident" if incident.number == "1042" else f"make incident-{incident.number}"
+    rerun += " UPDATE_STRUCTURE=1"
     if args.update_structure:
-        STRUCTURE.write_text(expected)
-        print(f"\nwrote {STRUCTURE.relative_to(ROOT)}")
-    elif STRUCTURE.read_text() != expected:
-        print(f"\nspan structure differs from {STRUCTURE.relative_to(ROOT)};", file=sys.stderr)
-        hint = "rerun with `make incident UPDATE_STRUCTURE=1` if the change is intended"
+        incident.structure.write_text(expected)
+        print(f"\nwrote {incident.structure.relative_to(ROOT)}")
+    elif incident.structure.read_text() != expected:
+        print(
+            f"\nspan structure differs from {incident.structure.relative_to(ROOT)};",
+            file=sys.stderr,
+        )
+        hint = f"rerun with `{rerun}` if the change is intended"
         print(hint, file=sys.stderr)
         return 1
-    print(f"\ntrace.py and trace.ts span structure matches {STRUCTURE.relative_to(ROOT)}")
+    print(f"\ntrace.py and trace.ts span structure matches {incident.structure.relative_to(ROOT)}")
     return 0
 
 

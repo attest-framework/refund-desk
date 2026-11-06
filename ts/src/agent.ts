@@ -19,14 +19,29 @@ import type {
 } from "openai/resources/chat/completions";
 
 const AGENT_SPEC = new URL("../../agent-spec/", import.meta.url);
-const SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL("system-prompt.txt", AGENT_SPEC)), "utf8").trim();
-const TOOLS = JSON.parse(
-  readFileSync(fileURLToPath(new URL("tools.json", AGENT_SPEC)), "utf8"),
-) as ChatCompletionTool[];
+const SPEC_DIRECTORIES: Record<string, URL> = { "1": AGENT_SPEC, "2": new URL("v2/", AGENT_SPEC) };
 const MAX_MODEL_CALLS = 8;
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type ToolResult = { [key: string]: Json };
+
+interface AgentSpec {
+  systemPrompt: string;
+  tools: ChatCompletionTool[];
+}
+
+/** System prompt and tool schemas of one agent-spec version (1 is the directory itself). */
+function loadSpec(version: string): AgentSpec {
+  const directory = SPEC_DIRECTORIES[version];
+  if (directory === undefined) {
+    throw new Error(`AGENT_SPEC_VERSION must be one of ${Object.keys(SPEC_DIRECTORIES).join(", ")}, got ${version}`);
+  }
+  const read = (name: string): string => readFileSync(fileURLToPath(new URL(name, directory)), "utf8");
+  return {
+    systemPrompt: read("system-prompt.txt").trim(),
+    tools: JSON.parse(read("tools.json")) as ChatCompletionTool[],
+  };
+}
 
 export interface Settings {
   modelBaseUrl: string;
@@ -34,6 +49,7 @@ export interface Settings {
   modelApiKey: string;
   paymentsBaseUrl: string;
   paymentsTimeoutMs: number;
+  agentSpecVersion: string;
 }
 
 function positiveInteger(name: string, raw: string): number {
@@ -68,6 +84,7 @@ export function settingsFromEnv(): Settings {
     modelApiKey: required("OPENAI_API_KEY"),
     paymentsBaseUrl: required("PAYMENTS_BASE_URL"),
     paymentsTimeoutMs: positiveInteger("PAYMENTS_TIMEOUT_MS", required("PAYMENTS_TIMEOUT_MS")),
+    agentSpecVersion: required("AGENT_SPEC_VERSION"),
   };
 }
 
@@ -115,6 +132,13 @@ class Tools {
       );
     }
     if (name === "notify_customer") {
+      if (this.settings.agentSpecVersion === "2") {
+        return this.notifyRecipient(
+          stringArg(args, "customer_id"),
+          stringArg(args, "order_id"),
+          stringArg(args, "message"),
+        );
+      }
       return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
     }
     throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
@@ -145,12 +169,14 @@ class Tools {
     const response = await this.request("GET", `/orders/${orderId}`);
     if (response.status === 404) return { error: "order_not_found", order_id: orderId };
     const order = await Tools.json(response);
-    return {
+    const result: ToolResult = {
       order_id: field(order, "order_id"),
       amount_cents: field(order, "amount_cents"),
       currency: field(order, "currency"),
       status: field(order, "status"),
     };
+    if (this.settings.agentSpecVersion === "2") result.customer_id = field(order, "customer_id");
+    return result;
   }
 
   async issueRefund(orderId: string, amountCents: number, reason: string): Promise<ToolResult> {
@@ -196,6 +222,18 @@ class Tools {
     const body = await Tools.json(response);
     return { notification_id: field(body, "notification_id"), status: "sent" };
   }
+
+  /** Agent-spec v2: the notification names the customer it goes to and the channel. */
+  async notifyRecipient(customerId: string, orderId: string, message: string): Promise<ToolResult> {
+    const response = await this.request("POST", "/notifications", {
+      customer_id: customerId,
+      channel: "email",
+      order_id: orderId,
+      message,
+    });
+    const body = await Tools.json(response);
+    return { notification_id: field(body, "notification_id"), status: "sent" };
+  }
 }
 
 /**
@@ -217,8 +255,9 @@ function failSpan(span: Span, error: unknown): void {
 export async function run(settings: Settings, customerMessage: string, tracer: Tracer): Promise<string> {
   const client = new OpenAI({ baseURL: settings.modelBaseUrl, apiKey: settings.modelApiKey });
   const tools = new Tools(settings);
+  const spec = loadSpec(settings.agentSpecVersion);
   const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: spec.systemPrompt },
     { role: "user", content: customerMessage },
   ];
   const root = tracer.startSpan("invoke_agent refund-desk", {
@@ -228,7 +267,7 @@ export async function run(settings: Settings, customerMessage: string, tracer: T
   const rootContext = trace.setSpan(context.active(), root);
   try {
     for (let i = 0; i < MAX_MODEL_CALLS; i++) {
-      const message = await chat(tracer, rootContext, client, settings.modelName, messages);
+      const message = await chat(tracer, rootContext, client, settings.modelName, messages, spec.tools);
       if (!message.tool_calls?.length) {
         const reply = message.content;
         if (typeof reply !== "string") throw new Error("model returned neither tool calls nor text");
@@ -257,12 +296,13 @@ async function chat(
   client: OpenAI,
   model: string,
   messages: ChatCompletionMessageParam[],
+  tools: ChatCompletionTool[],
 ): Promise<ChatCompletionAssistantMessageParam> {
   const span = tracer.startSpan(`chat ${model}`, { kind: SpanKind.CLIENT, startTime: now() }, parent);
   try {
     span.setAttribute("gen_ai.operation.name", "chat");
     span.setAttribute("gen_ai.request.model", model);
-    const completion = await client.chat.completions.create({ model, messages, tools: TOOLS });
+    const completion = await client.chat.completions.create({ model, messages, tools });
     const choice = completion.choices[0];
     if (choice === undefined) throw new Error("model response has no choices");
     if (completion.usage === undefined) throw new Error("model response has no usage");

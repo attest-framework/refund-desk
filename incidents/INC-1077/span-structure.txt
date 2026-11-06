@@ -1,0 +1,76 @@
+invoke_agent refund-desk [INTERNAL, UNSET]
+    gen_ai.agent.name = "refund-desk"
+    gen_ai.operation.name = "invoke_agent"
+    refund_desk.reply = "Your refund of $126.00 has been processed."
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 167
+      gen_ai.usage.output_tokens = 43
+  execute_tool lookup_order [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"order_id\":\"O-1042\"}"
+      gen_ai.tool.call.id = "call_1"
+      gen_ai.tool.call.result = "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}"
+      gen_ai.tool.name = "lookup_order"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 255
+      gen_ai.usage.output_tokens = 43
+  execute_tool lookup_order [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"order_id\":\"O-2077\"}"
+      gen_ai.tool.call.id = "call_2"
+      gen_ai.tool.call.result = "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}"
+      gen_ai.tool.name = "lookup_order"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 343
+      gen_ai.usage.output_tokens = 57
+  execute_tool issue_refund [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"amount_cents\":1200,\"order_id\":\"O-2077\",\"reason\":\"shipping refund\"}"
+      gen_ai.tool.call.id = "call_3"
+      gen_ai.tool.call.result = "{\"amount_cents\":1200,\"order_id\":\"O-2077\",\"refund_id\":\"R-0001\",\"status\":\"committed\"}"
+      gen_ai.tool.name = "issue_refund"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 439
+      gen_ai.usage.output_tokens = 58
+  execute_tool issue_refund [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"amount_cents\":12600,\"order_id\":\"O-2077\",\"reason\":\"whole order refund\"}"
+      gen_ai.tool.call.id = "call_4"
+      gen_ai.tool.call.result = "{\"amount_cents\":12600,\"order_id\":\"O-2077\",\"refund_id\":\"R-0002\",\"status\":\"committed\"}"
+      gen_ai.tool.name = "issue_refund"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 536
+      gen_ai.usage.output_tokens = 70
+  execute_tool notify_customer [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"customer_id\":\"C-0311\",\"message\":\"Your refund of $126.00 for order O-2077 has been processed.\",\"order_id\":\"O-2077\"}"
+      gen_ai.tool.call.id = "call_5"
+      gen_ai.tool.call.result = "{\"notification_id\":\"N-0001\",\"status\":\"sent\"}"
+      gen_ai.tool.name = "notify_customer"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["stop"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 634
+      gen_ai.usage.output_tokens = 20

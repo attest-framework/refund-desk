@@ -73,6 +73,8 @@ INC1077_MYPY := tests/attest/test_inc_1077.py
 INC1077_REPLAY_MYPY := tests/replay/test_inc_1077_replay.py
 INC1077_PYTEST_IGNORE :=
 INC1077_VITEST_EXCLUDE :=
+REPRO_REPLAY_PY := tests/replay/test_inc_1077_replay.py
+REPRO_REPLAY_TS := tests/replay/inc-1077.test.ts
 TSC_ATTEST := tsconfig.json
 TSC_REPLAY := tsconfig.json
 else
@@ -80,6 +82,8 @@ INC1077_MYPY :=
 INC1077_REPLAY_MYPY :=
 INC1077_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1077.py --ignore=tests/replay/test_inc_1077_replay.py
 INC1077_VITEST_EXCLUDE := --exclude '**/inc-1077.test.ts'
+REPRO_REPLAY_PY :=
+REPRO_REPLAY_TS :=
 TSC_ATTEST := tsconfig.released.json
 TSC_REPLAY := tsconfig.released.json
 endif
@@ -187,7 +191,7 @@ check-capture: capture-tests
 check-replay: replay-tests
 
 replay-tests:
-	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
+	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts replay-repro-py replay-repro-ts
 
 replay-types-py:
 	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py $(INC1077_REPLAY_MYPY)
@@ -196,12 +200,22 @@ replay-types-ts:
 	cd ts && pnpm exec tsc --noEmit -p tests/replay/$(TSC_REPLAY)
 
 replay-run-py:
-	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay $(INC1077_PYTEST_IGNORE) --attest-replay=strict --attest-egress=block \
+	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay --ignore=tests/replay/test_inc_1077_replay.py --attest-replay=strict --attest-egress=block \
 	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
-	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
+	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts --exclude '**/inc-1077.test.ts' \
 	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
+
+# The INC-1077 replay tests are incident reproductions: they assert with inspect() that the buggy
+# agent still violates the relational contracts. Like the INC-1042 reproduction tests they run
+# with no report, so the policy never counts the violations they reproduce. The released channel
+# (rc.3) has no relational contracts and skips them.
+replay-repro-py:
+	$(if $(REPRO_REPLAY_PY),cd py && $(REPLAY_ENV) uv run --no-sync pytest $(REPRO_REPLAY_PY) --attest-replay=strict --attest-egress=block --attest-strict)
+
+replay-repro-ts:
+	$(if $(REPRO_REPLAY_TS),cd ts && $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts tests/replay/inc-1077.test.ts)
 
 # Acceptance proof: appending a sentence to the system prompt makes strict replay fail in
 # both languages with the miss message. The script restores the prompt on every exit.

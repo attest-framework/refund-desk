@@ -66,7 +66,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
+        run: &select-baseline |
           set -euo pipefail
           # One query per trusted event, so the API filters by event: pull_request runs (including
           # fork PRs from a branch named main) can never fill the window and hide main's runs.
@@ -225,15 +225,19 @@ jobs:
           persist-credentials: false
           ref: main
 
+      - name: Allocate private Go cache directories
+        id: go-cache
+        run: echo "root=$(mktemp -d "$RUNNER_TEMP/annotate-go-XXXXXXXX")" >> "$GITHUB_OUTPUT"
+
       - name: Build attest main
         id: attest
         uses: attest-framework/attest/.github/actions/setup-attest@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
-        # setup-attest has no cache switch. Scope Go's module/build caches to fresh
-        # run/attempt-specific directories, separate from edge's restored cache paths.
+        # setup-attest has no cache switch. Scope Go's module/build caches to a private
+        # random directory created after edge finishes, separate from its cache paths.
         # The action may still contact the cache service; it cannot disable caching.
         env:
-          GOCACHE: ${{ runner.temp }}/annotate-go-${{ github.run_id }}-${{ github.run_attempt }}/build
-          GOMODCACHE: ${{ runner.temp }}/annotate-go-${{ github.run_id }}-${{ github.run_attempt }}/mod
+          GOCACHE: ${{ steps.go-cache.outputs.root }}/build
+          GOMODCACHE: ${{ steps.go-cache.outputs.root }}/mod
         with:
           ref: main
 
@@ -246,21 +250,35 @@ jobs:
           name: annotate-reports
           path: .
 
+      # Reuse the exact selector, not a second query implementation. An empty edge
+      # output is bootstrap only if this independent query also finds no baseline.
+      - name: Recheck main when edge reports no baseline
+        id: baseline-recheck
+        if: needs.edge.outputs.baseline-run-id == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: *select-baseline
+
       - name: Validate edge's selected main baseline run
         env:
           GH_TOKEN: ${{ github.token }}
           BASELINE_RUN_ID: ${{ needs.edge.outputs.baseline-run-id }}
+          RECHECK_RUN_ID: ${{ steps.baseline-recheck.outputs.run-id }}
         run: |
           set -euo pipefail
           if [ -z "$BASELINE_RUN_ID" ]; then
-            echo "::warning::Baseline bootstrap: edge selected no main baseline."
+            if [ -n "$RECHECK_RUN_ID" ]; then
+              echo "::error::edge reported no baseline but main has one ($RECHECK_RUN_ID)."
+              exit 1
+            fi
+            echo "::warning::Baseline bootstrap: edge and the independent trusted-run query found no main baseline."
             exit 0
           fi
           [[ "$BASELINE_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Invalid baseline run id"; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BASELINE_RUN_ID" \
             | jq -e --arg repo "$GITHUB_REPOSITORY" '
                 (.event == "push" or .event == "workflow_dispatch" or .event == "schedule")
-                and .head_branch == "main" and .repository.full_name == $repo
+                and .head_branch == "main" and .head_repository.full_name == $repo
                 and .conclusion == "success" and .path == ".github/workflows/ci.yml"'
 
       - name: Prepare isolated summary transport

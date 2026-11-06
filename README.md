@@ -9,7 +9,7 @@ Refund Desk is a small customer-support agent, written in Python and TypeScript,
 | Repo | Role | Tracks |
 |---|---|---|
 | [`attest-examples`](https://github.com/attest-framework/attest-examples) | One small, copyable example per feature or framework | Latest published release |
-| `refund-desk` (this repo) | One end-to-end story: incident → reproduction → fix → blocked regression | attest 1.1.0-rc.2 (released channel) and attest `main` (edge channel) |
+| `refund-desk` (this repo) | One end-to-end story: incident → reproduction → fix → blocked regression | attest 1.1.0-rc.3 (released channel) and attest `main` (edge channel) |
 
 Start with `attest-examples` to copy a working setup for your framework. Read this repository to follow one incident from the first report to a merge gate that blocks its regression.
 
@@ -95,7 +95,7 @@ The output-only tests missed this because the reply never changed: both refunds 
 
 These tests stay green permanently, including after the fix: they prove the contract catches this bug in the frozen traces, not that today's agent is correct. Contracts run in the engine with no model calls, so they cost nothing and give the same verdict on every run. See attest's [behavior contracts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/behavior-contracts.md) for the other contracts: forbidden tools, trajectories, ordering, cycles, failure streaks and argument predicates.
 
-`make check` runs them after the agent tests. The payments API is an attest world, so `make check` runs on attest 1.1.0-rc.2 and on attest `main`. The Act 5 step (`check-mutate`) uses `attest mutate`, and the `outage` act closes the run.
+`make check` runs them after the agent tests. The payments API is an attest world, so `make check` runs on attest 1.1.0-rc.3 and on attest `main`. The Act 5 step (`check-mutate`) uses `attest mutate`, and the `outage` act closes the run.
 
 ### Act 3a: capture
 
@@ -152,7 +152,7 @@ The email is `{{email_1}}` in every place it appears. The key is nowhere in the 
 
 The fixture is the input of Act 3b. It holds the four model exchanges of the fixed agent's run with their request keys (the incident capture from the agent as it shipped had five), so replay can answer the agent's real code from the recording with zero model calls, and the `world` section holds the payments world's final state (one refund) and the fault that fired. It is evidence only: replay and the tests start a fresh world from `world/`. A fixture that came from `--from <otlp>` has the trace but no exchanges and cannot replay.
 
-`make capture` and `make capture-check` run on attest 1.1.0-rc.2 and on attest `main`.
+`make capture` and `make capture-check` run on attest 1.1.0-rc.3 and on attest `main`.
 
 ### Act 3b: replay
 
@@ -246,7 +246,7 @@ Two transcripts in [`docs/agent-transcripts/`](docs/agent-transcripts/) show a c
 - [With the attest skill](docs/agent-transcripts/2026-11-04-attest-skill-duplicate-refund-contract.md): a fresh Claude Code session with only `attest init --skills` installed, in a copy of this repo without its contracts, is asked to "add a contract that prevents duplicate refunds" and writes a passing replay test.
 - [With the attest MCP server](docs/agent-transcripts/2026-11-04-attest-mcp-inc-1042-contract.md): a fresh session with only the MCP server drafts the contract with `draft_contract` and checks it with `run_contract`. It passes on the fixed agent's fixture, and its trace check fails on the frozen incident trace. The session then adds it to `py/tests/attest/test_inc_1042.py` (`test_inc_1042_double_refund_contract_holds_on_fixed_agent`).
 
-`attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`). The released channel (attest 1.1.0-rc.2) has `attest mcp`. See `attest guide mcp`.
+`attest init --mcp` wrote [`.mcp.json`](.mcp.json) (Claude Code), [`.cursor/mcp.json`](.cursor/mcp.json) and [`.codex/config.toml`](.codex/config.toml). They start `attest mcp` from `PATH`, so run your client with `py/.venv/bin` on `PATH` (for example after `source py/.venv/bin/activate`). The released channel (attest 1.1.0-rc.3) has `attest mcp`. See `attest guide mcp`.
 
 ### Act 6: TypeScript parity
 
@@ -262,7 +262,7 @@ The check fails on a spec whose status differs between the languages and on a sp
 
 #### The failure viewer
 
-`attest view` (on the released channel, attest 1.1.0-rc.2) turns the suite reports into one self-contained HTML page: the test list, the trace tree with the failing span highlighted, expected against actual, replay or live provenance, cost, a baseline diff and (when given) the surviving mutants. It needs no server and loads nothing from outside the file. See `attest guide viewer`.
+`attest view` (on the released channel, attest 1.1.0-rc.3) turns the suite reports into one self-contained HTML page: the test list, the trace tree with the failing span highlighted, expected against actual, replay or live provenance, cost, a baseline diff and (when given) the surviving mutants. It needs no server and loads nothing from outside the file. See `attest guide viewer`.
 
 `make check` runs the report-writing suites with `ATTEST_REPORT_TRACES=1` (the data here is synthetic, so embedding traces is safe) and runs `make view` before the final outage act; `make view` writes `reports/attest-report.html` from the four reports (`attest-report.{py,ts}.json` and `attest-report.replay.{py,ts}.json`). The page is written even when a suite failed.
 
@@ -352,7 +352,7 @@ coverage: missing evidence
 
 The retry is the second `issue_refund` call, made after the first one timed out at 1.2 s: the double refund. The traces record no cost and no message content, so an assertion over either, such as `cost_under(0.05)`, reports not evaluated (`missing_evidence`) instead of passing. The TypeScript trace reports the same counts.
 
-`trace check` ships in attest 1.1.0-rc.2, so `make doctor` runs on both channels.
+`trace check` ships in attest 1.1.0-rc.3, so `make doctor` runs on both channels.
 
 ## Flaky model: statistical verdicts and a judge budget
 
@@ -368,7 +368,7 @@ One run of a non-deterministic agent cannot show that a change made it worse. `m
 
 The last case shows the judge budget. It runs the test file once with `ATTEST_MAX_JUDGE_CALLS=1` and an empty judge cache. Two tests ask the scripted judge different questions: the first reserves the one call and is served, the second cannot reserve, is never sent, and is `not_evaluated: budget_exhausted`. The model server counts one judge request, the run summary reports `1 calls refused by budget`, and the policy warns (exit 2). Repeated identical questions are answered from the judge cache, so the 20-trial runs above reach the judge at most once.
 
-`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets ship in attest 1.1.0-rc.2, so it runs on both channels. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
+`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets ship in attest 1.1.0-rc.3, so it runs on both channels. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
 
 ## License
 

@@ -30,14 +30,14 @@ from refund_desk.agent import Settings, run
 
 
 def replay_agent_trace(
-    attest_replay: Callable[..., ReplaySession], message: str, trace_file: Path
+    attest_replay: Callable[..., ReplaySession], fixture: str, message: str, trace_file: Path
 ) -> None:
-    """Run the real agent against the fixture and write its OTLP/JSON trace to trace_file."""
+    """Run the real agent against the named fixture and write its OTLP/JSON trace to trace_file."""
     exporter = InMemorySpanExporter()
     provider = TracerProvider(resource=Resource.create({"service.name": "refund-desk-py"}))
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     try:
-        with attest_replay("inc-1042"):
+        with attest_replay(fixture):
             # Settings read OPENAI_BASE_URL, and run() builds the client from it: both
             # must happen after attest_replay points it at the proxy.
             run(Settings.from_env(), message, provider.get_tracer("refund-desk"))
@@ -56,7 +56,7 @@ def test_inc_1042_replay_leaves_one_refund_for_the_order(
     world = payments_world("payments-inc-1042")
     trace_file = tmp_path / "trace.otlp.json"
 
-    replay_agent_trace(attest_replay, incident_request["customer_message"], trace_file)
+    replay_agent_trace(attest_replay, "inc-1042", incident_request["customer_message"], trace_file)
 
     attest.evaluate(
         expect(OTelAdapter.from_otlp(trace_file))

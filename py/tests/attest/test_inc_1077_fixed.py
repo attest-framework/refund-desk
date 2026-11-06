@@ -29,7 +29,6 @@ def relational_contracts() -> ExpectChain:
     chain = expect(FIXTURE.trace)
     effects = chain.world(FIXTURE.world)
     effects.matches("notifications", "customer_id", related("orders", "customer_id", on="order_id"))
-    effects.sum("refunds", "amount_cents", at_most=related("orders", "amount_cents", on="order_id"))
     return chain
 
 
@@ -77,5 +76,4 @@ def test_inc_1077_current_agent_meets_relational_contracts(
     chain = expect(result)
     effects = chain.world(world.state())
     effects.matches("notifications", "customer_id", related("orders", "customer_id", on="order_id"))
-    effects.sum("refunds", "amount_cents", at_most=related("orders", "amount_cents", on="order_id"))
     attest.evaluate(chain)

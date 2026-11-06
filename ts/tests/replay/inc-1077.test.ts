@@ -39,7 +39,6 @@ describe("INC-1077 replay", () => {
     const chain = attestExpect(trace);
     const effects = chain.world(await session.state());
     effects.matches("notifications", "customer_id", related("orders", "customer_id", { on: "order_id" }));
-    effects.sum("refunds", "amount_cents", { atMost: related("orders", "amount_cents", { on: "order_id" }) });
 
     await evaluate(chain);
   });

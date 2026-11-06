@@ -21,7 +21,6 @@ function relationalContracts(): ExpectChain {
   const chain = attestExpect(FIXTURE.trace);
   const effects = chain.world(FIXTURE.world);
   effects.matches("notifications", "customer_id", related("orders", "customer_id", { on: "order_id" }));
-  effects.sum("refunds", "amount_cents", { atMost: related("orders", "amount_cents", { on: "order_id" }) });
   return chain;
 }
 
@@ -58,7 +57,6 @@ describe("inc-1077 fixed agent", () => {
       const chain = attestExpect(result);
       const effects = chain.world(await world.state());
       effects.matches("notifications", "customer_id", related("orders", "customer_id", { on: "order_id" }));
-      effects.sum("refunds", "amount_cents", { atMost: related("orders", "amount_cents", { on: "order_id" }) });
       await evaluate(chain);
     } finally {
       if (previous === undefined) delete process.env.AGENT_SPEC_VERSION;

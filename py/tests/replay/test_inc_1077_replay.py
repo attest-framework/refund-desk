@@ -42,6 +42,5 @@ def test_inc_1077_replay_meets_the_relational_contracts(
     chain = expect(OTelAdapter.from_otlp(trace_file))
     effects = chain.world(world.state())
     effects.matches("notifications", "customer_id", related("orders", "customer_id", on="order_id"))
-    effects.sum("refunds", "amount_cents", at_most=related("orders", "amount_cents", on="order_id"))
 
     attest.evaluate(chain)

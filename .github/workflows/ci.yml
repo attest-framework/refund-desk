@@ -36,6 +36,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      baseline-run-id: ${{ steps.baseline.outputs.run-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,10 +218,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: main
 
       - name: Build attest main
         id: attest
@@ -227,27 +231,164 @@ jobs:
         with:
           ref: main
 
+      - name: Preserve the trusted policy before downloading PR data
+        run: cp attest.policy.yaml "$RUNNER_TEMP/attest.policy.yaml"
+
       - name: Download the staged reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: annotate-reports
           path: .
 
-      # This job has no baseline pinned (the edge job enforces block_on_regression), and attest
-      # exits 3 when that rule runs without one: evaluate the policy minus that line.
-      - name: Drop block_on_regression from the policy
-        run: grep -v '^block_on_regression:' attest.policy.yaml > "$RUNNER_TEMP/attest.policy.no-baseline.yaml"
-
-      - name: Gate the reports and annotate
-        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
+      - name: Download main's selected baseline reports
+        if: needs.edge.outputs.baseline-run-id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          report: |
-            py/attest-report.py.json
-            py/attest-report.replay.py.json
-            ts/attest-report.ts.json
-            ts/attest-report.replay.ts.json
-          policy: ${{ runner.temp }}/attest.policy.no-baseline.yaml
+          name: attest-reports
+          path: baseline-reports
+          run-id: ${{ needs.edge.outputs.baseline-run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare the trusted policy and baseline pins
+        id: policy
+        env:
+          ENGINE: ${{ steps.attest.outputs.engine-path }}
+          BASELINE_RUN_ID: ${{ needs.edge.outputs.baseline-run-id }}
+          ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
+        run: |
+          set -euo pipefail
+          policy="$RUNNER_TEMP/attest.policy.yaml"
+          if [ -n "$BASELINE_RUN_ID" ]; then
+            for pair in 'py main-py' 'ts main-ts' 'replay.py main-replay-py' 'replay.ts main-replay-ts'; do
+              read -r suffix tag <<< "$pair"
+              "$ENGINE" baseline pin --tag "$tag" --report "baseline-reports/attest-report.$suffix.json"
+            done
+          else
+            echo "::warning::Baseline bootstrap: edge selected no main baseline; annotations use the no-baseline policy."
+            policy="$RUNNER_TEMP/attest.policy.no-baseline.yaml"
+            grep -v '^block_on_regression:' "$RUNNER_TEMP/attest.policy.yaml" > "$policy"
+          fi
+          echo "path=$policy" >> "$GITHUB_OUTPUT"
+
+      # One baseline tag per call. Each call upserts the same bot-owned comment; save
+      # each result and combine them so a later pass cannot hide an earlier regression.
+      - name: Annotate Python live report
+        id: live-py
+        continue-on-error: true
+        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
+        env:
+          ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
+        with:
+          report: py/attest-report.py.json
+          policy: ${{ steps.policy.outputs.path }}
+          baseline-tag: ${{ needs.edge.outputs.baseline-run-id != '' && 'main-py' || '' }}
           engine-binary: ${{ steps.attest.outputs.engine-path }}
+
+      - name: Preserve Python live summary
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot" and (.body | contains("<!-- attest:pr-annotate -->"))) | .body' > "$RUNNER_TEMP/attest-live-py.md"
+
+      - name: Annotate TypeScript live report
+        id: live-ts
+        continue-on-error: true
+        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
+        env:
+          ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
+        with:
+          report: ts/attest-report.ts.json
+          policy: ${{ steps.policy.outputs.path }}
+          baseline-tag: ${{ needs.edge.outputs.baseline-run-id != '' && 'main-ts' || '' }}
+          engine-binary: ${{ steps.attest.outputs.engine-path }}
+
+      - name: Preserve TypeScript live summary
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot" and (.body | contains("<!-- attest:pr-annotate -->"))) | .body' > "$RUNNER_TEMP/attest-live-ts.md"
+
+      - name: Annotate Python replay report
+        id: replay-py
+        continue-on-error: true
+        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
+        env:
+          ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
+        with:
+          report: py/attest-report.replay.py.json
+          policy: ${{ steps.policy.outputs.path }}
+          baseline-tag: ${{ needs.edge.outputs.baseline-run-id != '' && 'main-replay-py' || '' }}
+          engine-binary: ${{ steps.attest.outputs.engine-path }}
+
+      - name: Preserve Python replay summary
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot" and (.body | contains("<!-- attest:pr-annotate -->"))) | .body' > "$RUNNER_TEMP/attest-replay-py.md"
+
+      - name: Annotate TypeScript replay report
+        id: replay-ts
+        continue-on-error: true
+        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
+        env:
+          ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
+        with:
+          report: ts/attest-report.replay.ts.json
+          policy: ${{ steps.policy.outputs.path }}
+          baseline-tag: ${{ needs.edge.outputs.baseline-run-id != '' && 'main-replay-ts' || '' }}
+          engine-binary: ${{ steps.attest.outputs.engine-path }}
+
+      - name: Publish one combined summary comment
+        if: ${{ !cancelled() && steps.policy.outcome == 'success' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot" and (.body | contains("<!-- attest:pr-annotate -->"))) | .body' > "$RUNNER_TEMP/attest-replay-ts.md"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          marker = "<!-- attest:pr-annotate -->"
+          sections = []
+          for pair in ("live-py", "live-ts", "replay-py", "replay-ts"):
+              text = (root / f"attest-{pair}.md").read_text().replace(marker, "").strip()
+              if not text:
+                  raise SystemExit(f"Missing summary for {pair}")
+              sections.append(f"## {pair}\n\n{text}")
+          (root / "attest-comment.json").write_text(json.dumps({"body": marker + "\n" + "\n\n".join(sections)}))
+          PY
+          comment_id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot" and (.body | contains("<!-- attest:pr-annotate -->"))) | .id' | sort -n | head -n 1)"
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" --input "$RUNNER_TEMP/attest-comment.json"
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --input "$RUNNER_TEMP/attest-comment.json"
+          fi
+
+      - name: Enforce all four annotation evaluations
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOMES: ${{ steps.live-py.outcome }} ${{ steps.live-ts.outcome }} ${{ steps.replay-py.outcome }} ${{ steps.replay-ts.outcome }}
+        run: |
+          for outcome in $OUTCOMES; do
+            if [ "$outcome" != success ]; then
+              echo "::error::An attest report blocked or could not be evaluated; see the per-report annotations and summary."
+              exit 1
+            fi
+          done
 
   released:
     name: released (latest verified tag)

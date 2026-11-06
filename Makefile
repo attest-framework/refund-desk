@@ -11,6 +11,7 @@ include stack.mk
 export
 
 CHANNEL ?= released
+INCIDENT ?= 1042
 REPORTS := $(CURDIR)/reports
 PYTHON := uv run --no-project --python 3.12 python
 STACK := $(PYTHON) scripts/stack.py --
@@ -62,11 +63,12 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
+	@echo "make incident-1077 [CHANNEL=edge]     reproduce INC-1077 (over-refund, wrong recipient); writes incidents/INC-1077/trace.*.otlp.json"
 	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
@@ -101,7 +103,12 @@ endif
 incident:
 	$(REQUIRE_CHANNEL)
 	@test "$(CHANNEL)" = edge || { echo "make incident hosts the payments world with the engine in ATTEST_ENGINE_PATH: run it on the edge channel (make incident CHANNEL=edge)"; exit 1; }
-	$(STACK) $(PYTHON) scripts/incident.py $(if $(UPDATE_STRUCTURE),--update-structure)
+	$(STACK) $(PYTHON) scripts/incident.py --incident $(INCIDENT) $(if $(UPDATE_STRUCTURE),--update-structure)
+
+# INC-1077 is `make incident INCIDENT=1077`: the partial-refund agent (agent-spec/v2) in a healthy
+# world; its traces go to incidents/INC-1077/.
+incident-1077:
+	$(MAKE) incident INCIDENT=1077
 
 check:
 	$(REQUIRE_CHANNEL)

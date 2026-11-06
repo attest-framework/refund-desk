@@ -11,6 +11,8 @@ OPENAI_BASE_URL ?= http://127.0.0.1:$(MODEL_PORT)/v1
 MODEL_NAME ?= refund-desk-scripted
 OPENAI_API_KEY ?= sk-refunddesk-FAKE-7Qm2LxP9vT4rN8cWb3KdYz5H
 PAYMENTS_TIMEOUT_MS ?= 1200
+# Which agent-spec/ version the agents run: 1 is agent-spec/ itself (INC-1042), 2 is agent-spec/v2/.
+AGENT_SPEC_VERSION ?= 1
 
 # attest's LLM judge (layer 6) talks to the same scripted server.
 ATTEST_JUDGE_BASE_URL ?= $(OPENAI_BASE_URL)

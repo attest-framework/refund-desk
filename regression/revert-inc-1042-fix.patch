@@ -1,5 +1,5 @@
 diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
-index ccb0dfd..7882a38 100644
+index 4b9bd96..8aa8cc2 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
 @@ -2,7 +2,6 @@
@@ -10,7 +10,7 @@ index ccb0dfd..7882a38 100644
  import json
  import os
  from dataclasses import dataclass
-@@ -50,20 +49,6 @@ def canonical_json(value: Any) -> str:
+@@ -62,20 +61,6 @@ def canonical_json(value: Any) -> str:
      return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
  
  
@@ -31,8 +31,8 @@ index ccb0dfd..7882a38 100644
  class Tools:
      def __init__(self, settings: Settings) -> None:
          self.http = httpx.Client(
-@@ -96,32 +81,24 @@ class Tools:
-         }
+@@ -114,32 +99,24 @@ class Tools:
+         return result
  
      def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
 -        # The key derives from the order and the amount, so a retry of the same refund carries the
@@ -74,7 +74,7 @@ index ccb0dfd..7882a38 100644
      def notify_customer(self, order_id: str, message: str) -> dict[str, Any]:
          response = self.http.post("/notifications", json={"order_id": order_id, "message": message})
 diff --git a/ts/src/agent.ts b/ts/src/agent.ts
-index 1f69724..e7defa6 100644
+index 2902ba0..3d5ceab 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
 @@ -1,5 +1,4 @@
@@ -83,7 +83,7 @@ index 1f69724..e7defa6 100644
  import { readFileSync } from "node:fs";
  import { fileURLToPath } from "node:url";
  import {
-@@ -88,20 +87,6 @@ function field(body: { [key: string]: Json }, key: string): Json {
+@@ -105,20 +104,6 @@ function field(body: { [key: string]: Json }, key: string): Json {
    return value;
  }
  
@@ -104,7 +104,7 @@ index 1f69724..e7defa6 100644
  class Tools {
    constructor(private readonly settings: Settings) {}
  
-@@ -120,15 +105,10 @@ class Tools {
+@@ -144,15 +129,10 @@ class Tools {
      throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
    }
  
@@ -122,7 +122,7 @@ index 1f69724..e7defa6 100644
        body: body === undefined ? undefined : JSON.stringify(body),
        signal: AbortSignal.timeout(this.settings.paymentsTimeoutMs),
      });
-@@ -154,24 +134,17 @@ class Tools {
+@@ -180,24 +160,17 @@ class Tools {
    }
  
    async issueRefund(orderId: string, amountCents: number, reason: string): Promise<ToolResult> {
@@ -154,7 +154,7 @@ index 1f69724..e7defa6 100644
        }
        throw error;
      }
-@@ -179,16 +152,13 @@ class Tools {
+@@ -205,16 +178,13 @@ class Tools {
        const body = (await response.json()) as { error: string };
        return { error: field(body, "error"), order_id: orderId };
      }

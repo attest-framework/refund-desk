@@ -1,0 +1,49 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "lookup_order",
+      "description": "Look up an order by its id. Returns the order amount and the customer who placed it.",
+      "parameters": {
+        "type": "object",
+        "properties": {"order_id": {"type": "string", "description": "Order id, for example O-1042."}},
+        "required": ["order_id"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "issue_refund",
+      "description": "Refund an amount, in cents, for an order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {"type": "string"},
+          "amount_cents": {"type": "integer", "minimum": 1},
+          "reason": {"type": "string"}
+        },
+        "required": ["order_id", "amount_cents", "reason"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "notify_customer",
+      "description": "Send a message about an order to a customer.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "customer_id": {"type": "string", "description": "Customer id, for example C-0744."},
+          "order_id": {"type": "string"},
+          "message": {"type": "string"}
+        },
+        "required": ["customer_id", "order_id", "message"],
+        "additionalProperties": false
+      }
+    }
+  }
+]

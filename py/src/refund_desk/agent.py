@@ -15,9 +15,19 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 AGENT_SPEC = Path(__file__).resolve().parents[3] / "agent-spec"
-SYSTEM_PROMPT = (AGENT_SPEC / "system-prompt.txt").read_text().strip()
-TOOLS: list[dict[str, Any]] = json.loads((AGENT_SPEC / "tools.json").read_text())
 MAX_MODEL_CALLS = 8
+
+
+def load_spec(version: str) -> tuple[str, list[dict[str, Any]]]:
+    """System prompt and tool schemas of one agent-spec version (1 is the directory itself)."""
+    directories = {"1": AGENT_SPEC, "2": AGENT_SPEC / "v2"}
+    if version not in directories:
+        raise RuntimeError(
+            f"AGENT_SPEC_VERSION must be one of {sorted(directories)}, got {version!r}"
+        )
+    directory = directories[version]
+    prompt = (directory / "system-prompt.txt").read_text().strip()
+    return prompt, json.loads((directory / "tools.json").read_text())
 
 
 @dataclass(frozen=True)
@@ -27,6 +37,7 @@ class Settings:
     model_api_key: str
     payments_base_url: str
     payments_timeout_s: float
+    agent_spec_version: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -42,6 +53,7 @@ class Settings:
             model_api_key=required("OPENAI_API_KEY"),
             payments_base_url=required("PAYMENTS_BASE_URL"),
             payments_timeout_s=int(required("PAYMENTS_TIMEOUT_MS")) / 1000,
+            agent_spec_version=required("AGENT_SPEC_VERSION"),
         )
 
 
@@ -69,6 +81,7 @@ class Tools:
         self.http = httpx.Client(
             base_url=settings.payments_base_url, timeout=settings.payments_timeout_s
         )
+        self.spec_version = settings.agent_spec_version
 
     def close(self) -> None:
         self.http.close()
@@ -79,6 +92,8 @@ class Tools:
         if name == "issue_refund":
             return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
         if name == "notify_customer":
+            if self.spec_version == "2":
+                return self.notify_recipient(args["customer_id"], args["order_id"], args["message"])
             return self.notify_customer(args["order_id"], args["message"])
         raise ValueError(f"model requested unknown tool {name!r}")
 
@@ -88,12 +103,15 @@ class Tools:
             return {"error": "order_not_found", "order_id": order_id}
         response.raise_for_status()
         order = response.json()
-        return {
+        result: dict[str, Any] = {
             "order_id": order["order_id"],
             "amount_cents": order["amount_cents"],
             "currency": order["currency"],
             "status": order["status"],
         }
+        if self.spec_version == "2":
+            result["customer_id"] = order["customer_id"]
+        return result
 
     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
         # The key derives from the order and the amount, so a retry of the same refund carries the
@@ -128,13 +146,28 @@ class Tools:
         response.raise_for_status()
         return {"notification_id": response.json()["notification_id"], "status": "sent"}
 
+    def notify_recipient(self, customer_id: str, order_id: str, message: str) -> dict[str, Any]:
+        """Agent-spec v2: the notification names the customer it goes to and the channel."""
+        response = self.http.post(
+            "/notifications",
+            json={
+                "customer_id": customer_id,
+                "channel": "email",
+                "order_id": order_id,
+                "message": message,
+            },
+        )
+        response.raise_for_status()
+        return {"notification_id": response.json()["notification_id"], "status": "sent"}
+
 
 def run(settings: Settings, customer_message: str, tracer: trace.Tracer) -> str:
     """Handle one customer message and return the agent's reply."""
     client = OpenAI(base_url=settings.model_base_url, api_key=settings.model_api_key)
     tools = Tools(settings)
+    system_prompt, tool_schemas = load_spec(settings.agent_spec_version)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": customer_message},
     ]
     try:
@@ -146,7 +179,7 @@ def run(settings: Settings, customer_message: str, tracer: trace.Tracer) -> str:
             },
         ) as root:
             for _ in range(MAX_MODEL_CALLS):
-                message = chat(tracer, client, settings.model_name, messages)
+                message = chat(tracer, client, settings.model_name, messages, tool_schemas)
                 if not message.get("tool_calls"):
                     reply = message["content"]
                     if not isinstance(reply, str):
@@ -166,7 +199,11 @@ def run(settings: Settings, customer_message: str, tracer: trace.Tracer) -> str:
 
 
 def chat(
-    tracer: trace.Tracer, client: OpenAI, model: str, messages: list[dict[str, Any]]
+    tracer: trace.Tracer,
+    client: OpenAI,
+    model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     with tracer.start_as_current_span(f"chat {model}", kind=SpanKind.CLIENT) as span:
         span.set_attribute("gen_ai.operation.name", "chat")
@@ -174,7 +211,7 @@ def chat(
         completion = client.chat.completions.create(
             model=model,
             messages=messages,  # type: ignore[arg-type]
-            tools=TOOLS,  # type: ignore[arg-type]
+            tools=tools,  # type: ignore[arg-type]
         )
         choice = completion.choices[0]
         span.set_attribute("gen_ai.response.model", completion.model)

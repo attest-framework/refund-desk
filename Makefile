@@ -48,22 +48,48 @@ PLANTED_EMAIL := jane.doe@example.com
 CAPTURE_TRACES := ../.stack/capture-traces
 # One language's incident under `attest capture`. The capture's own environment points the
 # proxy upstream at the scripted model server; the child gets the proxy URL instead.
+# Arguments: 1 output directory, 2 fixture name, 3 world file, 4 incident arguments, 5 capture flags.
 CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  uv run --no-sync attest capture --name $(CAPTURE_NAME) --world ../$(WORLD) --out-dir $(1) -- \
-  $(PYTHON) ../scripts/incident.py --lang py --in-world --trace-dir $(CAPTURE_TRACES)
+  uv run --no-sync attest capture --name $(2) --world ../$(3) $(5) --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py $(4) --lang py --in-world --trace-dir $(CAPTURE_TRACES)
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
-  pnpm exec attest capture --name $(CAPTURE_NAME) --world ../$(WORLD) --out-dir $(1) -- \
-  $(PYTHON) ../scripts/incident.py --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
+  pnpm exec attest capture --name $(2) --world ../$(3) $(5) --out-dir $(1) -- \
+  $(PYTHON) ../scripts/incident.py $(4) --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
+# INC-1077 is captured as an incident reproduction: the agent over-refunds and notifies the wrong
+# customer, so the drafted relational contracts fail and are recorded as expected failures.
+CAPTURE_NAME_1077 := inc-1077
+WORLD_1077 := world/payments-inc-1077.world.yaml
+FIXTURE_1077 := tests/attest/fixtures/$(CAPTURE_NAME_1077).attest.json
+CAPTURE_ARGS_1077 := --incident 1077
+CAPTURE_FLAGS_1077 := --expect-fail
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
 endif
+# INC-1077's tests use relational contracts (`related`, `sum`, `matches`), which only attest with
+# attest#242 has; the released channel (rc.3) skips them.
+ifeq ($(CHANNEL),edge)
+INC1077_MYPY := tests/attest/test_inc_1077.py
+INC1077_REPLAY_MYPY := tests/replay/test_inc_1077_replay.py
+INC1077_PYTEST_IGNORE :=
+INC1077_VITEST_EXCLUDE :=
+TSC_ATTEST := tsconfig.json
+TSC_REPLAY := tsconfig.json
+else
+INC1077_MYPY :=
+INC1077_REPLAY_MYPY :=
+INC1077_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1077.py --ignore=tests/replay/test_inc_1077_replay.py
+INC1077_VITEST_EXCLUDE := --exclude '**/inc-1077.test.ts'
+TSC_ATTEST := tsconfig.released.json
+TSC_REPLAY := tsconfig.released.json
+endif
+
 ifeq ($(CHANNEL),released)
 # The released channel finds the engine the published SDK pins (PATH, ~/.attest or download).
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts capture-refresh capture-refresh-py capture-refresh-ts capture-1077 capture-1077-py capture-1077-ts capture-check-1077 recapture-1077-py recapture-1077-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
@@ -73,7 +99,9 @@ help:
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
-	@echo "make capture-check [CHANNEL=edge]    re-capture and compare bytes, redaction and trace check"
+	@echo "make capture-check [CHANNEL=edge]    re-capture INC-1042 and INC-1077, compare bytes, redaction and trace check"
+	@echo "make capture-1077 [CHANNEL=edge]     capture the INC-1077 run of each agent as an expected-failure fixture"
+	@echo "make capture-check-1077 [CHANNEL=edge]  re-capture INC-1077 and compare bytes and redaction"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make walkthrough [CHANNEL=released|edge]  every act from the incident to the viewer, each outcome checked"
 	@echo "make outage [CHANNEL=released|edge]        judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
@@ -162,17 +190,17 @@ replay-tests:
 	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
 
 replay-types-py:
-	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py
+	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py $(INC1077_REPLAY_MYPY)
 
 replay-types-ts:
-	cd ts && pnpm exec tsc --noEmit -p tests/replay
+	cd ts && pnpm exec tsc --noEmit -p tests/replay/$(TSC_REPLAY)
 
 replay-run-py:
-	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
+	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay $(INC1077_PYTEST_IGNORE) --attest-replay=strict --attest-egress=block \
 	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
-	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
+	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
 	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
 
 # Acceptance proof: appending a sentence to the system prompt makes strict replay fail in
@@ -231,15 +259,15 @@ mutate-record-act1:
 mutate-record-all:
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay \
 	  --attest-strict --attest-report=$(MUTATE_DIR)/attest-report.contracts.py.json
-	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest --attest-strict
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest reproduction
-	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) uv run --no-sync pytest tests/replay \
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) uv run --no-sync pytest tests/replay $(INC1077_PYTEST_IGNORE) \
 	  --attest-replay=strict --attest-egress=block --attest-strict
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run \
 	  $(call VITEST_REPORT,$(MUTATE_DIR)/attest-report.contracts.ts.json)
-	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all pnpm exec vitest run --config reproduction/vitest.config.ts
-	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
 
 # Act 6: py and ts verdict parity. The recording runs write the specs the engine evaluates to
 # $(PARITY_DIR)/{py,ts}/ and each suite's report next to them, so no existing report or policy run
@@ -272,7 +300,7 @@ parity-record-py-default:
 	  --attest-strict --attest-report=$(PARITY_DIR)/py/report.default.json
 
 parity-record-py-attest:
-	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest --attest-strict \
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict \
 	  --attest-report=$(PARITY_DIR)/py/report.attest.json
 
 parity-record-py-reproduction:
@@ -280,7 +308,7 @@ parity-record-py-reproduction:
 	  --attest-report=$(PARITY_DIR)/py/report.reproduction.json
 
 parity-record-py-replay:
-	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py $(REPLAY_ENV) uv run --no-sync pytest tests/replay \
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py $(REPLAY_ENV) uv run --no-sync pytest tests/replay $(INC1077_PYTEST_IGNORE) \
 	  --attest-replay=strict --attest-egress=block --attest-strict --attest-report=$(PARITY_DIR)/py/report.replay.json
 
 parity-record-ts-default:
@@ -288,7 +316,7 @@ parity-record-ts-default:
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.default.json)
 
 parity-record-ts-attest:
-	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts \
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.attest.json)
 
 parity-record-ts-reproduction:
@@ -296,7 +324,7 @@ parity-record-ts-reproduction:
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.reproduction.json)
 
 parity-record-ts-replay:
-	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts \
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts $(INC1077_VITEST_EXCLUDE) \
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.replay.json)
 
 # The check bites: two small recording/report pairs with one differing status must fail.
@@ -321,10 +349,10 @@ view:
 	uv run --project py --no-sync attest view $$reports $$baseline --out $(VIEW_OUT) $(if $(NO_OPEN),--no-open)
 
 capture-tests:
-	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py
-	cd py && uv run --no-sync pytest tests/attest --attest-strict
-	cd ts && pnpm exec tsc --noEmit -p tests/attest
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts
+	cd py && uv run --no-sync mypy tests/attest/test_inc_1042.py $(INC1077_MYPY)
+	cd py && uv run --no-sync pytest tests/attest $(INC1077_PYTEST_IGNORE) --attest-strict
+	cd ts && pnpm exec tsc --noEmit -p tests/attest/$(TSC_ATTEST)
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(INC1077_VITEST_EXCLUDE)
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
 check-reproduction: reproduction
@@ -349,15 +377,26 @@ capture:
 	$(REQUIRE_CHANNEL)
 	$(STACK) $(MAKE) --no-print-directory capture-py capture-ts
 
-# Re-record: `attest capture --refresh` refuses a fixture that has a world section, so the
-# fixture is removed and captured again.
+# Re-record from scratch: the fixture is removed and captured again (capture-refresh keeps it).
 capture-py:
 	rm -f py/$(FIXTURE)
-	$(call CAPTURE_PY,tests/attest/fixtures)
+	$(call CAPTURE_PY,tests/attest/fixtures,$(CAPTURE_NAME),$(WORLD))
 
 capture-ts:
 	rm -f ts/$(FIXTURE)
-	$(call CAPTURE_TS,tests/attest/fixtures)
+	$(call CAPTURE_TS,tests/attest/fixtures,$(CAPTURE_NAME),$(WORLD))
+
+# Re-runs each fixture's recorded command with `attest capture --refresh` (world-aware) and reports
+# the semantic diff against the committed fixture; a re-record with no change says so.
+capture-refresh:
+	$(REQUIRE_CHANNEL)
+	$(STACK) $(MAKE) --no-print-directory capture-refresh-py capture-refresh-ts
+
+capture-refresh-py:
+	cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 uv run --no-sync attest capture --refresh $(CAPTURE_NAME) --yes
+
+capture-refresh-ts:
+	cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 pnpm exec attest capture --refresh $(CAPTURE_NAME) --yes
 
 # Re-captures both languages into a temporary directory and holds the committed fixtures to:
 # byte-identical re-capture, a clean redaction check, no planted secret, a valid trace.
@@ -380,12 +419,44 @@ capture-check:
 	done; exit $$status
 	cd py && uv run --no-sync attest trace check $(FIXTURE)
 	cd ts && pnpm exec attest trace check $(FIXTURE)
+	$(MAKE) --no-print-directory capture-check-1077
 
 recapture-py:
-	$(call CAPTURE_PY,$(CAPTURE_DIR)/py)
+	$(call CAPTURE_PY,$(CAPTURE_DIR)/py,$(CAPTURE_NAME),$(WORLD))
 
 recapture-ts:
-	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts)
+	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts,$(CAPTURE_NAME),$(WORLD))
+
+# INC-1077: the buggy agent under `attest capture --expect-fail` in the INC-1077 world. Needs the
+# attest that drafts relational contracts from a world (attest#242).
+capture-1077:
+	$(REQUIRE_CHANNEL)
+	$(STACK) $(MAKE) --no-print-directory capture-1077-py capture-1077-ts
+
+capture-1077-py:
+	rm -f py/$(FIXTURE_1077)
+	$(call CAPTURE_PY,tests/attest/fixtures,$(CAPTURE_NAME_1077),$(WORLD_1077),$(CAPTURE_ARGS_1077),$(CAPTURE_FLAGS_1077))
+
+capture-1077-ts:
+	rm -f ts/$(FIXTURE_1077)
+	$(call CAPTURE_TS,tests/attest/fixtures,$(CAPTURE_NAME_1077),$(WORLD_1077),$(CAPTURE_ARGS_1077),$(CAPTURE_FLAGS_1077))
+
+# Re-captures INC-1077 into a temporary directory and holds the committed fixtures to byte-identical
+# re-capture, a clean redaction check and a valid trace.
+capture-check-1077:
+	$(REQUIRE_CHANNEL)
+	rm -rf $(CAPTURE_DIR)/1077
+	$(STACK) $(MAKE) --no-print-directory recapture-1077-py recapture-1077-ts
+	cmp py/$(FIXTURE_1077) $(CAPTURE_DIR)/1077/py/$(CAPTURE_NAME_1077).attest.json
+	cmp ts/$(FIXTURE_1077) $(CAPTURE_DIR)/1077/ts/$(CAPTURE_NAME_1077).attest.json
+	cd py && uv run --no-sync attest capture --check-redaction $(FIXTURE_1077)
+	cd ts && pnpm exec attest capture --check-redaction $(FIXTURE_1077)
+
+recapture-1077-py:
+	$(call CAPTURE_PY,$(CAPTURE_DIR)/1077/py,$(CAPTURE_NAME_1077),$(WORLD_1077),$(CAPTURE_ARGS_1077),$(CAPTURE_FLAGS_1077))
+
+recapture-1077-ts:
+	$(call CAPTURE_TS,$(CAPTURE_DIR)/1077/ts,$(CAPTURE_NAME_1077),$(WORLD_1077),$(CAPTURE_ARGS_1077),$(CAPTURE_FLAGS_1077))
 
 # The whole story, act by act, each act's outcome checked (scripts/walkthrough.py). It runs the
 # existing targets above and a copy of this tree with the INC-1042 fix reverted, so it needs

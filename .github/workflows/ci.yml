@@ -1,4 +1,4 @@
-# Demo channels (contract C6; attest 1.0.1 released, attest main edge):
+# Demo channels (contract C6; attest 1.1.0-rc.1 released, attest main edge):
 #   edge      this commit against attest `main`, built by setup-attest
 #   released  the latest verified-<version> tag against its published packages
 # No job calls a paid model: the scripted model server answers the agent and the

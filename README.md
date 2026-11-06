@@ -319,6 +319,17 @@ calls a paid provider. Each command's evidence is in `reports/walkthrough/`.
 | **5 — recorded coding-agent contract** | The [committed transcript](incidents/INC-1077/act5/transcript.stream.jsonl) shows MCP drafting and executing `sum` and `matches`: the incident fails, the fixed capture passes. The walkthrough rechecks both offline and regenerates the [per-operator mutation report and survivor explanation](incidents/INC-1077/act5/README.md): **11/49 killed**, with trace-only mutations outside these two effect invariants. |
 | **6 — drift reaches an operator** | Ten healthy scripted judge replies establish the dynamic baseline; the server's drift mode lowers “states the refunded amount” to **0.3**. `ContinuousEvalRunner` posts exactly **one** alert to a local stdlib webhook receiver. The checked line starts `drift: 1 webhook alert: status=hard_fail score=0.3`. |
 
+Both regression demonstrations are **closed unmerged**, with their branches retained:
+
+- **PR A:** [`required` failed](https://github.com/attest-framework/refund-desk/actions/runs/42313069042);
+  the [policy summary](https://github.com/attest-framework/refund-desk/pull/36#issuecomment-6694144422)
+  identifies both `sum` and `matches` regressions in Python and TS, with the two effect violations annotated.
+- **PR B:** [`required` failed](https://github.com/attest-framework/refund-desk/actions/runs/42313067944)
+  even though all live/replay tests passed; the
+  [policy summary](https://github.com/attest-framework/refund-desk/pull/37#issuecomment-6693826501)
+  names the removed sum assertion ids in all four baselines. Its annotations say
+  `Attest policy reported a blocking violation`.
+
 Customer contact emails are present **only** in the INC-1077 world and its v2 lookup/notification
 tool results. The INC-1042 world, fixtures, and frozen traces are unchanged; `make capture-check`
 proves its captures remain byte-identical. The new fixed INC-1077 captures and span-structure

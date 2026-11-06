@@ -350,7 +350,8 @@ def main() -> int:
         ]
         acts = [*acts, *second_acts] if options.incident == "all" else second_acts
     print(
-        f"walkthrough INC-{options.incident} on the {channel} channel (logs in {LOGS.relative_to(ROOT)}/)",
+        f"walkthrough INC-{options.incident} on the {channel} channel "
+        f"(logs in {LOGS.relative_to(ROOT)}/)",
         flush=True,
     )
     try:

@@ -4,7 +4,7 @@ The committed [stream-json transcript](transcript.stream.jsonl) records the codi
 
 ## Reproduce the recorded session
 
-Use a scratch copy of Refund Desk, not your normal checkout. Remove its project settings and copy only attest's `attest` and `attest-verify-generator` skills from the attest checkout into the scratch `.claude/skills/`. No extra project instructions or project MCP servers belong in that scratch tree. Install the edge SDK and point `ATTEST_ENGINE_PATH` at the edge engine. Write an MCP config containing only:
+Use a scratch copy of Refund Desk, not your normal checkout. Remove its project settings and copy only `skills/attest/` and `skills/attest-verify-generator/` from the attest checkout into the scratch `.claude/skills/`. No extra project instructions or project MCP servers belong in that scratch tree. Install the edge SDK and point `ATTEST_ENGINE_PATH` at the edge engine. Write an MCP config containing only:
 
 ```json
 {"mcpServers":{"attest":{"command":"attest","args":["mcp"]}}}

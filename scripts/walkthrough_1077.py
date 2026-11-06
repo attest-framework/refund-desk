@@ -196,7 +196,10 @@ class Incident1077(Walkthrough):
             raise ActError(
                 "mutation report matches committed per-operator evidence", "mutation report changed"
             )
-        return "recorded coding-agent contract: incident FAILS, fix PASSES; mutation operators in incidents/INC-1077/act5/README.md"
+        return (
+            "recorded coding-agent contract: incident FAILS, fix PASSES; "
+            "mutation operators in incidents/INC-1077/act5/README.md"
+        )
 
     def act_drift(self) -> str:
         result = self.run(

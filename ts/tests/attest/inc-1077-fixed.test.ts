@@ -6,9 +6,13 @@
 // frozen in incidents/INC-1077/ and reproduced by inc-1077.test.ts; the contracts below are the
 // same relational contracts, and here they pass. The strict replay of the agent against this
 // fixture is tests/replay/inc-1077.test.ts.
-import { attestExpect, loadFixture, related, type ExpectChain } from "@attest-ai/core";
-import { inspect } from "@attest-ai/vitest";
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { trace } from "@opentelemetry/api";
+import { Agent, attestExpect, loadFixture, related, type ExpectChain } from "@attest-ai/core";
+import { evaluate, useWorld } from "@attest-ai/vitest";
+import { describe, it } from "vitest";
+import { run, settingsFromEnv } from "../../src/agent.js";
 
 const FIXTURE = loadFixture(new URL("./fixtures/inc-1077.attest.json", import.meta.url));
 
@@ -33,14 +37,32 @@ function traceContracts(): ExpectChain {
 
 describe("inc-1077 fixed agent", () => {
   it("run meets the relational contracts", async () => {
-    const result = await inspect(relationalContracts());
-
-    expect(result.assertionResults.map((row) => row.status)).toEqual(["pass", "pass"]);
+    await evaluate(relationalContracts());
   });
 
   it("run meets the trace contracts", async () => {
-    const result = await inspect(traceContracts());
+    await evaluate(traceContracts());
+  });
 
-    expect(result.assertionResults.map((row) => row.status)).toEqual(["pass", "pass", "pass", "pass", "pass"]);
+  it("current agent meets the relational contracts", async () => {
+    const previous = process.env.AGENT_SPEC_VERSION;
+    process.env.AGENT_SPEC_VERSION = "2";
+    try {
+      const world = await useWorld(fileURLToPath(new URL("../../../world/payments-inc-1077.world.yaml", import.meta.url)));
+      const request = JSON.parse(
+        readFileSync(new URL("../../../incidents/INC-1077/request.json", import.meta.url), "utf8"),
+      ) as { customer_message: string };
+      const result = await new Agent("refund-desk", async () => ({
+        message: await run(settingsFromEnv(), request.customer_message, trace.getTracer("refund-desk")),
+      })).arun({});
+      const chain = attestExpect(result);
+      const effects = chain.world(await world.state());
+      effects.matches("notifications", "customer_id", related("orders", "customer_id", { on: "order_id" }));
+      effects.sum("refunds", "amount_cents", { atMost: related("orders", "amount_cents", { on: "order_id" }) });
+      await evaluate(chain);
+    } finally {
+      if (previous === undefined) delete process.env.AGENT_SPEC_VERSION;
+      else process.env.AGENT_SPEC_VERSION = previous;
+    }
   });
 });

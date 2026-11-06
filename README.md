@@ -302,6 +302,15 @@ make check CHANNEL=edge      # lint, type-check and run the attest tests in both
 
 `attest.policy.yaml` sets `block_on_regression`, which needs a baseline. `make check BASELINE_DIR=<dir>` (the four `attest-report*.json` of an earlier green `main` run) pins them as `main-py`, `main-ts`, `main-replay-py` and `main-replay-ts` and evaluates the live and replay reports with `--baseline`; without `BASELINE_DIR` it evaluates the policy minus that rule and says so. `PYTEST_XDIST="-n auto"` runs the Python suites in parallel (Vitest stays serial: the tests share one payments URL).
 
+On edge, INC-1077's fixed-capture and current-agent tests write to `attest-report.{py,ts}.json`,
+and its fixed-agent strict replay writes to `attest-report.replay.{py,ts}.json`. Each relational
+`sum` and `matches` contract is a separate assertion row with an id derived from its test scope
+and contract spec: deleting a contract is a baseline removal, and a failing contract blocks policy.
+The current-agent tests use the scripted server, so a code regression is reported even if it
+also causes strict replay to miss. Frozen incident `inspect()` reproductions stay outside these
+reports because they assert known violations. The released rc.3 channel skips every INC-1077
+test until relational contracts ship in rc.4.
+
 | Path | What it is |
 |---|---|
 | `py/`, `ts/` | The Refund Desk agent: an OpenAI chat-completions tool loop with `lookup_order`, `issue_refund` and `notify_customer`, plus its pytest / Vitest attest tests |

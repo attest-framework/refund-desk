@@ -8,6 +8,9 @@ Two scenarios are served, selected by the request's ``model`` field:
   selects that incident's script (``CONVERSATIONS``); any other message gets the INC-1042 script.
 * ``refund-desk-judge`` answers attest's LLM-judge (layer 6) requests.
 
+``--drift`` (or ``POST /_admin/drift/on`` and ``/_admin/drift/off``) makes the judge score the
+criterion "states the refunded amount" low whatever the reply says, for drift-alert demos.
+
 ``--flaky P --seed S`` makes a seeded fraction P of chat requests fail with
 HTTP 500, for retry and statistics demos. ``GET /_admin/stats`` returns the
 request counter; ``POST /_admin/reset`` zeroes it and reseeds the fault RNG.
@@ -33,6 +36,9 @@ ORDER_ID = re.compile(r"\bO-\d+\b")
 # The judge prompt quotes the agent's reply; a passing reply confirms a refund
 # with a dollar amount.
 JUDGE_PASS = re.compile(r"refund of \$\d+\.\d{2}", re.IGNORECASE)
+# Drift mode lowers the judge's score for this criterion; every other criterion is unaffected.
+DRIFT_CRITERION = "states the refunded amount"
+DRIFT_SCORE = 0.3
 
 
 class ScriptError(Exception):
@@ -209,10 +215,19 @@ def conversation_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
     return refund_desk_reply(messages)
 
 
-def judge_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    """Scripted attest judge: score the quoted reply with a fixed rule."""
+def judge_reply(messages: list[dict[str, Any]], drift: bool = False) -> dict[str, Any]:
+    """Scripted attest judge: score the quoted reply with a fixed rule.
+
+    With ``drift`` on, the criterion "states the refunded amount" scores ``DRIFT_SCORE`` whatever
+    the reply says: the judge's scores for it shift while the replies stay the same.
+    """
     prompt = "\n".join(str(m.get("content") or "") for m in messages if m["role"] == "user")
-    if JUDGE_PASS.search(prompt):
+    if drift and DRIFT_CRITERION in prompt.lower():
+        verdict = {
+            "score": DRIFT_SCORE,
+            "explanation": "Scripted judge (drift mode): score lowered.",
+        }
+    elif JUDGE_PASS.search(prompt):
         verdict = {"score": 0.9, "explanation": "Scripted judge: the reply confirms the refund."}
     else:
         verdict = {"score": 0.2, "explanation": "Scripted judge: no refund confirmation found."}
@@ -225,7 +240,8 @@ def token_count(value: Any) -> int:
 
 
 class State:
-    def __init__(self, flaky: float, seed: int) -> None:
+    def __init__(self, flaky: float, seed: int, drift: bool = False) -> None:
+        self.drift = drift
         self.flaky = flaky
         self.seed = seed
         self.lock = threading.Lock()
@@ -269,6 +285,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.state.reset()
             self.send_json(200, {"ok": True})
             return
+        if self.path in ("/_admin/drift/on", "/_admin/drift/off"):
+            with self.state.lock:
+                self.state.drift = self.path.endswith("/on")
+                drift = self.state.drift
+            self.send_json(200, {"drift": drift})
+            return
         if self.path != "/v1/chat/completions":
             self.error(404, "not_found", f"no route POST {self.path}")
             return
@@ -289,7 +311,10 @@ class Handler(BaseHTTPRequestHandler):
             self.error(400, "invalid_request_error", "streaming is not scripted")
             return
         model = request.get("model")
-        scripts = {AGENT_MODEL: ("agent", conversation_reply), JUDGE_MODEL: ("judge", judge_reply)}
+        scripts = {
+            AGENT_MODEL: ("agent", conversation_reply),
+            JUDGE_MODEL: ("judge", lambda messages: judge_reply(messages, self.state.drift)),
+        }
         if model not in scripts:
             self.error(404, "model_not_found", f"no script for model {model!r}")
             return
@@ -340,11 +365,16 @@ def main() -> None:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--flaky", type=float, default=0.0, metavar="P")
     parser.add_argument("--seed", type=int, default=1042)
+    parser.add_argument(
+        "--drift",
+        action="store_true",
+        help="start in drift mode: the judge scores 'states the refunded amount' low",
+    )
     args = parser.parse_args()
     if not 0.0 <= args.flaky <= 1.0:
         parser.error("--flaky must be between 0 and 1")
 
-    Handler.state = State(args.flaky, args.seed)
+    Handler.state = State(args.flaky, args.seed, args.drift)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     sys.stderr.write(f"model-server: listening on http://{args.host}:{args.port}/v1\n")
     server.serve_forever()

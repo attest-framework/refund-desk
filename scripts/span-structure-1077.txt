@@ -13,27 +13,27 @@ invoke_agent refund-desk [INTERNAL, UNSET]
       gen_ai.operation.name = "execute_tool"
       gen_ai.tool.call.arguments = "{\"order_id\":\"O-1042\"}"
       gen_ai.tool.call.id = "call_1"
-      gen_ai.tool.call.result = "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}"
+      gen_ai.tool.call.result = "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"alex.synthetic@example.com\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}"
       gen_ai.tool.name = "lookup_order"
   chat refund-desk-scripted [CLIENT, UNSET]
       gen_ai.operation.name = "chat"
       gen_ai.request.model = "refund-desk-scripted"
       gen_ai.response.finish_reasons = ["tool_calls"]
       gen_ai.response.model = "refund-desk-scripted"
-      gen_ai.usage.input_tokens = 255
+      gen_ai.usage.input_tokens = 267
       gen_ai.usage.output_tokens = 43
   execute_tool lookup_order [INTERNAL, UNSET]
       gen_ai.operation.name = "execute_tool"
       gen_ai.tool.call.arguments = "{\"order_id\":\"O-2077\"}"
       gen_ai.tool.call.id = "call_2"
-      gen_ai.tool.call.result = "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}"
+      gen_ai.tool.call.result = "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_email\":\"robin.synthetic@example.com\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}"
       gen_ai.tool.name = "lookup_order"
   chat refund-desk-scripted [CLIENT, UNSET]
       gen_ai.operation.name = "chat"
       gen_ai.request.model = "refund-desk-scripted"
       gen_ai.response.finish_reasons = ["tool_calls"]
       gen_ai.response.model = "refund-desk-scripted"
-      gen_ai.usage.input_tokens = 343
+      gen_ai.usage.input_tokens = 369
       gen_ai.usage.output_tokens = 57
   execute_tool issue_refund [INTERNAL, UNSET]
       gen_ai.operation.name = "execute_tool"
@@ -46,7 +46,7 @@ invoke_agent refund-desk [INTERNAL, UNSET]
       gen_ai.request.model = "refund-desk-scripted"
       gen_ai.response.finish_reasons = ["tool_calls"]
       gen_ai.response.model = "refund-desk-scripted"
-      gen_ai.usage.input_tokens = 439
+      gen_ai.usage.input_tokens = 464
       gen_ai.usage.output_tokens = 58
   execute_tool issue_refund [INTERNAL, UNSET]
       gen_ai.operation.name = "execute_tool"
@@ -59,18 +59,18 @@ invoke_agent refund-desk [INTERNAL, UNSET]
       gen_ai.request.model = "refund-desk-scripted"
       gen_ai.response.finish_reasons = ["tool_calls"]
       gen_ai.response.model = "refund-desk-scripted"
-      gen_ai.usage.input_tokens = 544
+      gen_ai.usage.input_tokens = 570
       gen_ai.usage.output_tokens = 70
   execute_tool notify_customer [INTERNAL, UNSET]
       gen_ai.operation.name = "execute_tool"
       gen_ai.tool.call.arguments = "{\"customer_id\":\"C-0311\",\"message\":\"Your refund of $114.00 for order O-2077 has been processed.\",\"order_id\":\"O-2077\"}"
       gen_ai.tool.call.id = "call_5"
-      gen_ai.tool.call.result = "{\"notification_id\":\"N-0001\",\"status\":\"sent\"}"
+      gen_ai.tool.call.result = "{\"customer_email\":\"robin.synthetic@example.com\",\"notification_id\":\"N-0001\",\"status\":\"sent\"}"
       gen_ai.tool.name = "notify_customer"
   chat refund-desk-scripted [CLIENT, UNSET]
       gen_ai.operation.name = "chat"
       gen_ai.request.model = "refund-desk-scripted"
       gen_ai.response.finish_reasons = ["stop"]
       gen_ai.response.model = "refund-desk-scripted"
-      gen_ai.usage.input_tokens = 642
+      gen_ai.usage.input_tokens = 680
       gen_ai.usage.output_tokens = 20

@@ -121,6 +121,8 @@ class Tools:
         }
         if self.spec_version == "2":
             result["customer_id"] = order["customer_id"]
+            if "customer_email" in order:
+                result["customer_email"] = order["customer_email"]
         return result
 
     def order_lock(self, order_id: str) -> threading.Lock:
@@ -211,7 +213,10 @@ class Tools:
             },
         )
         response.raise_for_status()
-        return {"notification_id": response.json()["notification_id"], "status": "sent"}
+        result = {"notification_id": response.json()["notification_id"], "status": "sent"}
+        if "customer_email" in order:
+            result["customer_email"] = order["customer_email"]
+        return result
 
 
 def run(settings: Settings, customer_message: str, tracer: trace.Tracer) -> str:

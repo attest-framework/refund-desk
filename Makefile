@@ -108,7 +108,7 @@ help:
 	@echo "make capture-1077 [CHANNEL=edge]     capture the INC-1077 run of the fixed agent in each language"
 	@echo "make capture-check-1077 [CHANNEL=edge]  re-capture INC-1077 and compare bytes and redaction"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
-	@echo "make walkthrough [CHANNEL=released|edge]  every act from the incident to the viewer, each outcome checked"
+	@echo "make walkthrough [INCIDENT=1042|1077|all] [CHANNEL=released|edge]  checked acts (default 1042; 1077 needs edge)"
 	@echo "make outage [CHANNEL=released|edge]        judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
 	@echo "make mutate [CHANNEL=edge]         mutation score of the Act 1 tests vs all contracts (Act 5)"
 	@echo "make check-parity [CHANNEL=edge]  compare py and ts verdicts per contract (Act 6)"
@@ -509,7 +509,7 @@ recapture-1077-ts:
 # every suite once, and the walkthrough would run them a second time.
 walkthrough:
 	$(REQUIRE_CHANNEL)
-	$(PYTHON) scripts/walkthrough.py --channel $(CHANNEL)
+	$(PYTHON) scripts/walkthrough.py --channel $(CHANNEL) --incident $(INCIDENT)
 
 # Provider outage: attest's judge is unreachable (a closed loopback port) while the agent keeps its
 # scripted server. The judge rows are not evaluated: provider_unavailable; outage.policy.yaml

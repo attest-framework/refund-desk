@@ -63,13 +63,15 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
+.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make incident-1077 [CHANNEL=edge]     reproduce INC-1077 (over-refund, wrong recipient); writes incidents/INC-1077/trace.*.otlp.json"
-	@echo "make check [CHANNEL=released|edge]   lint, type-check and run the attest tests"
+	@echo "make check [CHANNEL=released|edge] [BASELINE_DIR=DIR] [PYTEST_XDIST=-n auto]  lint, type-check and run the attest tests;"
+	@echo "                                     BASELINE_DIR holds main's four attest-report*.json and enables block_on_regression,"
+	@echo "                                     PYTEST_XDIST runs the Python suites in parallel (needs pytest-xdist)"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
@@ -136,18 +138,47 @@ check:
 	$(MAKE) --no-print-directory outage || failed="$$failed outage"; \
 	test -z "$$failed" || { echo >&2 "make check failed:$$failed"; exit 1; }
 
-check-py:
+# attest.policy.yaml sets block_on_regression, which needs a pinned baseline. With BASELINE_DIR
+# (the four report names from an earlier green main run) check-py and check-ts pin that run's
+# report under main-py / main-ts and evaluate the full policy with --baseline. Without it the
+# rule cannot run (attest exits 3), so they evaluate NO_BASELINE_POLICY, the same file minus that
+# one line, and the log says so. outage and the walkthrough evaluate standalone reports and always
+# use NO_BASELINE_POLICY.
+NO_BASELINE_POLICY := $(REPORTS)/attest.policy.no-baseline.yaml
+BASELINE_ABS := $(if $(BASELINE_DIR),$(abspath $(BASELINE_DIR)))
+CHECK_POLICY := $(if $(BASELINE_DIR),$(CURDIR)/attest.policy.yaml,$(NO_BASELINE_POLICY))
+
+policy-file:
+	mkdir -p $(REPORTS)
+	grep -v '^block_on_regression:' attest.policy.yaml > $(NO_BASELINE_POLICY)
+ifeq ($(BASELINE_DIR),)
+	@echo "BASELINE_DIR is empty: block_on_regression is not evaluated"
+else
+	@for n in $(VIEW_REPORT_NAMES); do test -f "$(BASELINE_ABS)/$$n" || \
+	  { echo "BASELINE_DIR $(BASELINE_DIR) lacks $$n"; exit 1; }; done
+endif
+
+# Parallel workers for the Python suites, e.g. PYTEST_XDIST="-n auto" (pytest-xdist).
+PYTEST_XDIST ?=
+
+check-py: policy-file
 	cd py && uv run --no-sync python -c "import attest; print('attest-ai', attest.__version__, attest.__file__)"
 	cd py && uv run --no-sync ruff check . $(TOOLS) && uv run --no-sync ruff format --check . $(TOOLS)
 	cd py && uv run --no-sync mypy
-	cd py && $(REPORT_TRACES) uv run --no-sync pytest --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
-	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy ../attest.policy.yaml
+	cd py && $(REPORT_TRACES) uv run --no-sync pytest $(PYTEST_XDIST) --ignore=tests/attest --ignore=tests/replay --attest-strict --attest-report=$(REPORTS)/attest-report.py.json
+ifneq ($(BASELINE_DIR),)
+	cd py && uv run --no-sync attest baseline pin --tag main-py --report $(BASELINE_ABS)/attest-report.py.json
+endif
+	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.py.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-py)
 
-check-ts:
+check-ts: policy-file
 	cd ts && node -p "'@attest-ai/core ' + require('./node_modules/@attest-ai/core/package.json').version"
 	cd ts && pnpm exec tsc --noEmit
 	cd ts && $(REPORT_TRACES) ATTEST_STRICT=1 pnpm exec vitest run --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.ts.json
-	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy ../attest.policy.yaml
+ifneq ($(BASELINE_DIR),)
+	cd ts && pnpm exec attest baseline pin --tag main-ts --report $(BASELINE_ABS)/attest-report.ts.json
+endif
+	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.ts.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-ts)
 
 # The captured INC-1042 tests load fixtures: they need the attest that has `attest capture`.
 # They stay out of the default type-check and test scope (mypy `exclude`, tsconfig `exclude`,
@@ -156,10 +187,20 @@ check-capture: capture-tests
 
 # The INC-1042 replay tests (Act 3b) run today's agent against the captured fixture and a fresh
 # attest world for payments (the tests host it), so they call no model.
-check-replay: replay-tests
+check-replay: replay-tests replay-gate
 
 replay-tests:
 	$(STACK) $(MAKE) --no-print-directory -k replay-types-py replay-types-ts replay-run-py replay-run-ts
+
+# The replay reports are gated like the live ones: with BASELINE_DIR they are pinned as
+# main-replay-py / main-replay-ts and evaluated with --baseline.
+replay-gate: policy-file
+ifneq ($(BASELINE_DIR),)
+	cd py && uv run --no-sync attest baseline pin --tag main-replay-py --report $(BASELINE_ABS)/attest-report.replay.py.json
+	cd ts && pnpm exec attest baseline pin --tag main-replay-ts --report $(BASELINE_ABS)/attest-report.replay.ts.json
+endif
+	cd py && uv run --no-sync attest policy evaluate --report $(REPORTS)/attest-report.replay.py.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-replay-py)
+	cd ts && pnpm exec attest policy evaluate --report $(REPORTS)/attest-report.replay.ts.json --policy $(CHECK_POLICY) $(if $(BASELINE_DIR),--baseline main-replay-ts)
 
 replay-types-py:
 	cd py && uv run --no-sync mypy src tests/replay/test_inc_1042_replay.py
@@ -168,7 +209,7 @@ replay-types-ts:
 	cd ts && pnpm exec tsc --noEmit -p tests/replay
 
 replay-run-py:
-	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block \
+	cd py && $(REPORT_TRACES) $(REPLAY_ENV) uv run --no-sync pytest $(PYTEST_XDIST) tests/replay --attest-replay=strict --attest-egress=block \
 	  --attest-strict --attest-report=$(REPORTS)/attest-report.replay.py.json
 
 replay-run-ts:
@@ -398,7 +439,7 @@ walkthrough:
 # Provider outage: attest's judge is unreachable (a closed loopback port) while the agent keeps its
 # scripted server. The judge rows are not evaluated: provider_unavailable; outage.policy.yaml
 # warns (exit 2) where attest.policy.yaml blocks (exit 1). Nothing here calls a paid model.
-outage:
+outage: policy-file
 	$(REQUIRE_CHANNEL)
 	$(STACK) $(PYTHON) scripts/outage.py
 

@@ -2,9 +2,8 @@
 # healthy: no faults. `attest-engine world` and the test helpers host it on a loopback port and
 # put its base URL in PAYMENTS_BASE_URL; every run starts from this file, so nothing resets.
 #
-# payments-inc-1042.world.yaml is the same world with the INC-1042 fault armed, and
-# payments-inc-1077.world.yaml has another seed. A world file has no include, so keep them in
-# step: they differ only in the `faults` list and the seed.
+# payments-inc-1042.world.yaml is the same world with the INC-1042 fault armed. A world file has
+# no include, so keep the two in step: they differ only in the `faults` list.
 world_version: 1
 base_url_env: PAYMENTS_BASE_URL
 seed: 1042
@@ -24,12 +23,6 @@ resources:
         customer_id: C-0520
         item: Linen apron (synthetic)
         amount_cents: 2650
-        currency: USD
-        status: delivered
-      - order_id: O-2077
-        customer_id: C-0744
-        item: Walnut serving board (synthetic)
-        amount_cents: 12600
         currency: USD
         status: delivered
   refunds:

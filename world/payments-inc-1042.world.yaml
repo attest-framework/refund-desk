@@ -29,12 +29,6 @@ resources:
         amount_cents: 2650
         currency: USD
         status: delivered
-      - order_id: O-2077
-        customer_id: C-0744
-        item: Walnut serving board (synthetic)
-        amount_cents: 12600
-        currency: USD
-        status: delivered
   refunds:
     path: /refunds
     id_field: refund_id

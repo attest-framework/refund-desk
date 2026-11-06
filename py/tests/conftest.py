@@ -33,3 +33,10 @@ def incident_request() -> dict[str, str]:
     path = Path(__file__).resolve().parents[2] / "incidents" / "INC-1042" / "request.json"
     request: dict[str, str] = json.loads(path.read_text())
     return request
+
+
+@pytest.fixture(scope="session")
+def incident_1077_request() -> dict[str, str]:
+    path = Path(__file__).resolve().parents[2] / "incidents" / "INC-1077" / "request.json"
+    request: dict[str, str] = json.loads(path.read_text())
+    return request

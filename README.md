@@ -113,7 +113,7 @@ make capture-check CHANNEL=edge    # re-capture, compare bytes, check redaction 
 attest capture --name inc-1042 -- <the incident command for that language>
 ```
 
-`make capture` removes the existing fixture and captures again with `--world world/payments-inc-1042.world.yaml` (`attest capture --refresh` refuses a fixture that has a world section). `OPENAI_BASE_URL` in the capture's environment is the scripted model server, so the proxy forwards to it; the agent gets the proxy's URL instead. Each agent builds its client from `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and exports its spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when capture sets it, next to the OTLP/JSON file. The fixtures land in `py/tests/attest/fixtures/inc-1042.attest.json` and `ts/tests/attest/fixtures/inc-1042.attest.json`; capture drafts `py/tests/attest/test_inc_1042.py` and `ts/tests/attest/inc-1042.test.ts` next to them. Those two files are committed contract tests: `inspect()` runs the drafted contracts over the fixture's trace and the test asserts each status, all `pass` on the fixed agent's capture. `make check` runs them outside the policy report. The double refund itself is held by the frozen traces in `incidents/INC-1042/`; the contract that catches it is in the reproduction tests (Act 2).
+`make capture` removes the existing fixture and captures again with `--world world/payments-inc-1042.world.yaml` (`make capture-refresh CHANNEL=edge` runs `attest capture --refresh` on both fixtures instead and reports `no semantic change` for an unchanged re-record). `OPENAI_BASE_URL` in the capture's environment is the scripted model server, so the proxy forwards to it; the agent gets the proxy's URL instead. Each agent builds its client from `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and exports its spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when capture sets it, next to the OTLP/JSON file. The fixtures land in `py/tests/attest/fixtures/inc-1042.attest.json` and `ts/tests/attest/fixtures/inc-1042.attest.json`; capture drafts `py/tests/attest/test_inc_1042.py` and `ts/tests/attest/inc-1042.test.ts` next to them. Those two files are committed contract tests: `inspect()` runs the drafted contracts over the fixture's trace and the test asserts each status, all `pass` on the fixed agent's capture. `make check` runs them outside the policy report. The double refund itself is held by the frozen traces in `incidents/INC-1042/`; the contract that catches it is in the reproduction tests (Act 2).
 
 ```text
 capture inc-1042: tests/attest/fixtures/inc-1042.attest.json
@@ -124,6 +124,7 @@ capture inc-1042: tests/attest/fixtures/inc-1042.attest.json
     pass  cardinality-lookup_order-per-order_id      lookup_order within max 1 for each of 1 order_id value(s)
     pass  cardinality-issue_refund-per-order_id      issue_refund within max 1 for each of 1 order_id value(s)
     ...
+    pass  relational-sum-refunds-amount_cents-per-order_id  effect holds: refunds amount_cents sum within orders.amount_cents for 1 order_id values
   verified: every drafted contract passes
 ```
 

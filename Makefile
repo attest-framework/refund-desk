@@ -55,13 +55,14 @@ CAPTURE_PY = cd py && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
 CAPTURE_TS = cd ts && OPENAI_BASE_URL=http://127.0.0.1:$(MODEL_PORT)/v1 \
   pnpm exec attest capture --name $(2) --world ../$(3) $(5) --out-dir $(1) -- \
   $(PYTHON) ../scripts/incident.py $(4) --lang ts --in-world --trace-dir $(CAPTURE_TRACES)
-# INC-1077 is captured as an incident reproduction: the agent over-refunds and notifies the wrong
-# customer, so the drafted relational contracts fail and are recorded as expected failures.
+# INC-1077 is captured on the fixed agent: it caps the over-refund and notifies the order's
+# customer, so the drafted relational contracts pass. The incident's own recording is frozen in
+# incidents/INC-1077/ (fixture.<lang>.attest.json) and reproduced by the inspect() tests.
 CAPTURE_NAME_1077 := inc-1077
 WORLD_1077 := world/payments-inc-1077.world.yaml
 FIXTURE_1077 := tests/attest/fixtures/$(CAPTURE_NAME_1077).attest.json
 CAPTURE_ARGS_1077 := --incident 1077
-CAPTURE_FLAGS_1077 := --expect-fail
+CAPTURE_FLAGS_1077 :=
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
@@ -69,7 +70,7 @@ endif
 # INC-1077's tests use relational contracts (`related`, `sum`, `matches`), which only attest with
 # attest#242 has; the released channel (rc.3) skips them.
 ifeq ($(CHANNEL),edge)
-INC1077_MYPY := tests/attest/test_inc_1077.py
+INC1077_MYPY := tests/attest/test_inc_1077.py tests/attest/test_inc_1077_fixed.py
 INC1077_REPLAY_MYPY := tests/replay/test_inc_1077_replay.py
 INC1077_PYTEST_IGNORE :=
 INC1077_VITEST_EXCLUDE :=
@@ -80,8 +81,8 @@ TSC_REPLAY := tsconfig.json
 else
 INC1077_MYPY :=
 INC1077_REPLAY_MYPY :=
-INC1077_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1077.py --ignore=tests/replay/test_inc_1077_replay.py
-INC1077_VITEST_EXCLUDE := --exclude '**/inc-1077.test.ts'
+INC1077_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1077.py --ignore=tests/attest/test_inc_1077_fixed.py --ignore=tests/replay/test_inc_1077_replay.py
+INC1077_VITEST_EXCLUDE := --exclude '**/inc-1077.test.ts' --exclude '**/inc-1077-fixed.test.ts'
 REPRO_REPLAY_PY :=
 REPRO_REPLAY_TS :=
 TSC_ATTEST := tsconfig.released.json
@@ -98,7 +99,7 @@ endif
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
-	@echo "make incident-1077 [CHANNEL=edge]     reproduce INC-1077 (over-refund, wrong recipient); writes incidents/INC-1077/trace.*.otlp.json"
+	@echo "make incident-1077 [CHANNEL=edge]     run INC-1077 on the fixed agent: capped refund, right recipient; writes .stack/incident-1077-traces/"
 	@echo "make check [CHANNEL=released|edge] [BASELINE_DIR=DIR] [PYTEST_XDIST=-n auto]  lint, type-check and run the attest tests;"
 	@echo "                                     BASELINE_DIR holds main's four attest-report*.json and enables block_on_regression,"
 	@echo "                                     PYTEST_XDIST runs the Python suites in parallel (needs pytest-xdist)"
@@ -106,7 +107,7 @@ help:
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
 	@echo "make capture-check [CHANNEL=edge]    re-capture INC-1042 and INC-1077, compare bytes, redaction and trace check"
-	@echo "make capture-1077 [CHANNEL=edge]     capture the INC-1077 run of each agent as an expected-failure fixture"
+	@echo "make capture-1077 [CHANNEL=edge]     capture the INC-1077 run of the fixed agent in each language"
 	@echo "make capture-check-1077 [CHANNEL=edge]  re-capture INC-1077 and compare bytes and redaction"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make walkthrough [CHANNEL=released|edge]  every act from the incident to the viewer, each outcome checked"
@@ -139,8 +140,9 @@ incident:
 	@test "$(CHANNEL)" = edge || { echo "make incident hosts the payments world with the engine in ATTEST_ENGINE_PATH: run it on the edge channel (make incident CHANNEL=edge)"; exit 1; }
 	$(STACK) $(PYTHON) scripts/incident.py --incident $(INCIDENT) $(if $(UPDATE_STRUCTURE),--update-structure)
 
-# INC-1077 is `make incident INCIDENT=1077`: the partial-refund agent (agent-spec/v2) in a healthy
-# world; its traces go to incidents/INC-1077/.
+# INC-1077 is `make incident INCIDENT=1077`: the fixed partial-refund agent (agent-spec/v2) in a
+# healthy world; its traces go to .stack/incident-1077-traces/ (incidents/INC-1077/ holds the
+# frozen traces of the incident agent).
 incident-1077:
 	$(MAKE) incident INCIDENT=1077
 
@@ -248,10 +250,9 @@ replay-run-ts:
 	cd ts && $(REPORT_TRACES) $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts --exclude '**/inc-1077.test.ts' \
 	  --reporter=default --reporter=@attest-ai/vitest/reporter --outputFile.attest=$(REPORTS)/attest-report.replay.ts.json
 
-# The INC-1077 replay tests are incident reproductions: they assert with inspect() that the buggy
-# agent still violates the relational contracts. Like the INC-1042 reproduction tests they run
-# with no report, so the policy never counts the violations they reproduce. The released channel
-# (rc.3) has no relational contracts and skips them.
+# The INC-1077 replay tests replay the fixed agent against its capture and assert that the
+# relational contracts hold. They run with no report, as the INC-1042 reproduction tests do. The
+# released channel (rc.3) has no relational contracts and skips them.
 replay-repro-py:
 	$(if $(REPRO_REPLAY_PY),cd py && $(REPLAY_ENV) uv run --no-sync pytest $(REPRO_REPLAY_PY) --attest-replay=strict --attest-egress=block --attest-strict)
 
@@ -482,7 +483,7 @@ recapture-py:
 recapture-ts:
 	$(call CAPTURE_TS,$(CAPTURE_DIR)/ts,$(CAPTURE_NAME),$(WORLD))
 
-# INC-1077: the buggy agent under `attest capture --expect-fail` in the INC-1077 world. Needs the
+# INC-1077: the fixed agent under `attest capture` in the INC-1077 world. Needs the
 # attest that drafts relational contracts from a world (attest#242).
 capture-1077:
 	$(REQUIRE_CHANNEL)

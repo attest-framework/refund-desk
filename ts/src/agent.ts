@@ -133,11 +133,7 @@ class Tools {
     }
     if (name === "notify_customer") {
       if (this.settings.agentSpecVersion === "2") {
-        return this.notifyRecipient(
-          stringArg(args, "customer_id"),
-          stringArg(args, "order_id"),
-          stringArg(args, "message"),
-        );
+        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"));
       }
       return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
     }
@@ -165,10 +161,16 @@ class Tools {
     return (await response.json()) as { [key: string]: Json };
   }
 
-  async lookupOrder(orderId: string): Promise<ToolResult> {
+  /** The order as the payments API holds it, or null when there is no such order. */
+  private async orderRecord(orderId: string): Promise<{ [key: string]: Json } | null> {
     const response = await this.request("GET", `/orders/${orderId}`);
-    if (response.status === 404) return { error: "order_not_found", order_id: orderId };
-    const order = await Tools.json(response);
+    if (response.status === 404) return null;
+    return Tools.json(response);
+  }
+
+  async lookupOrder(orderId: string): Promise<ToolResult> {
+    const order = await this.orderRecord(orderId);
+    if (order === null) return { error: "order_not_found", order_id: orderId };
     const result: ToolResult = {
       order_id: field(order, "order_id"),
       amount_cents: field(order, "amount_cents"),
@@ -179,7 +181,21 @@ class Tools {
     return result;
   }
 
-  async issueRefund(orderId: string, amountCents: number, reason: string): Promise<ToolResult> {
+  async issueRefund(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
+    let amountCents = requestedCents;
+    const existing = await this.orderRefunds(orderId);
+    // A refund of an amount the order already has is a retry: its key matches the first refund's
+    // and the payments API answers it with that refund (INC-1042), so it adds nothing.
+    if (!existing.some((refund) => refund.amount_cents === amountCents)) {
+      const order = await this.orderRecord(orderId);
+      if (order === null) return { error: "order_not_found", order_id: orderId };
+      // The refunds of one order never total more than the order amount (INC-1077): a refund
+      // beyond what is left is capped to it, and a fully refunded order refuses.
+      const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
+      const remaining = Number(field(order, "amount_cents")) - refunded;
+      if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+      amountCents = Math.min(amountCents, remaining);
+    }
     // The key derives from the order and the amount, so a retry of the same refund carries the
     // same key and the payments API answers it with the first refund (INC-1042).
     let response: Response;
@@ -205,15 +221,20 @@ class Tools {
       const body = (await response.json()) as { error: string };
       return { error: field(body, "error"), order_id: orderId };
     }
-    return committed(await Tools.json(response));
+    const refund = committed(await Tools.json(response));
+    if (amountCents !== requestedCents) refund.requested_amount_cents = requestedCents;
+    return refund;
+  }
+
+  private async orderRefunds(orderId: string): Promise<{ [key: string]: Json }[]> {
+    const response = await this.request("GET", `/refunds?order_id=${encodeURIComponent(orderId)}`);
+    if (!response.ok) throw new Error(`payments ${response.status}: ${await response.text()}`);
+    return ((await response.json()) as { refunds: { [key: string]: Json }[] }).refunds;
   }
 
   /** The refund the payments API committed before the timeout, if there is one. */
   private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
-    const response = await this.request("GET", `/refunds?order_id=${encodeURIComponent(orderId)}`);
-    if (!response.ok) throw new Error(`payments ${response.status}: ${await response.text()}`);
-    const { refunds } = (await response.json()) as { refunds: { [key: string]: Json }[] };
-    const match = refunds.find((refund) => refund.amount_cents === amountCents);
+    const match = (await this.orderRefunds(orderId)).find((refund) => refund.amount_cents === amountCents);
     return match === undefined ? null : committed(match);
   }
 
@@ -223,10 +244,18 @@ class Tools {
     return { notification_id: field(body, "notification_id"), status: "sent" };
   }
 
-  /** Agent-spec v2: the notification names the customer it goes to and the channel. */
-  async notifyRecipient(customerId: string, orderId: string, message: string): Promise<ToolResult> {
+  /**
+   * Agent-spec v2: the notification names the customer it goes to and the channel.
+   *
+   * The recipient is the customer of the order's record, never the customer_id the model passes:
+   * a session that looked up another customer's order earlier must not send this order's
+   * confirmation there (INC-1077).
+   */
+  async notifyRecipient(orderId: string, message: string): Promise<ToolResult> {
+    const order = await this.orderRecord(orderId);
+    if (order === null) return { error: "order_not_found", order_id: orderId };
     const response = await this.request("POST", "/notifications", {
-      customer_id: customerId,
+      customer_id: field(order, "customer_id"),
       channel: "email",
       order_id: orderId,
       message,

@@ -4,13 +4,14 @@
 // a $126.00 order, and sent the notification to the customer of another order (C-0311 instead of
 // C-0744). The fixture holds that run and the INC-1077 world's final state; the contracts below
 // fail on it, and these tests assert exactly how (contract C6: reproduction tests are permanent
-// `inspect()` assertions, so they stay green and prove each contract catches the bug). The strict
-// replay of the agent against this fixture is tests/replay/inc-1077.test.ts.
+// `inspect()` assertions, so they stay green and prove each contract catches the bug). The fixture
+// is frozen in incidents/INC-1077/; the fixed agent's own capture is tested in
+// tests/attest/inc-1077-fixed.test.ts.
 import { attestExpect, loadFixture, related, type ExpectChain } from "@attest-ai/core";
 import { inspect } from "@attest-ai/vitest";
 import { describe, expect, it } from "vitest";
 
-const FIXTURE = loadFixture(new URL("./fixtures/inc-1077.attest.json", import.meta.url));
+const FIXTURE = loadFixture(new URL("../../../incidents/INC-1077/fixture.ts.attest.json", import.meta.url));
 
 function contracts(): ExpectChain {
   return attestExpect(FIXTURE.trace)

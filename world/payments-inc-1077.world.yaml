@@ -5,8 +5,8 @@
 # `attest-engine world` hosts it on a loopback port and puts its base URL in PAYMENTS_BASE_URL;
 # every run starts from this file, so nothing resets.
 #
-# payments.world.yaml is the same world with another seed. A world file has no include, so keep
-# the two in step: they differ only in the seed.
+# payments.world.yaml is the same world without O-2077, with another seed. A world file has no
+# include, so keep the two in step: they differ only in the seed and the O-2077 order.
 world_version: 1
 base_url_env: PAYMENTS_BASE_URL
 seed: 1077

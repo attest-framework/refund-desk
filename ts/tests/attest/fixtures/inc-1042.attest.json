@@ -78,6 +78,24 @@
         "tool": "notify_customer"
       },
       "type": "trace"
+    },
+    {
+      "description": "refunds amount_cents sums to at most orders.amount_cents for each order_id",
+      "id": "relational-sum-refunds-amount_cents-per-order_id",
+      "kind": "relational",
+      "spec": {
+        "at_most": {
+          "related": {
+            "field": "amount_cents",
+            "on": "order_id",
+            "resource": "orders"
+          }
+        },
+        "check": "sum",
+        "field": "amount_cents",
+        "resource": "refunds"
+      },
+      "type": "effect"
     }
   ],
   "exchanges": [
@@ -745,7 +763,10 @@
     ],
     "exit_code": 0,
     "kind": "command",
-    "replay_capable": true
+    "replay_capable": true,
+    "world": {
+      "file": "world/payments-inc-1042.world.yaml"
+    }
   },
   "trace": {
     "agent_id": "refund-desk",
@@ -966,6 +987,11 @@
       {
         "contract": "cardinality-notify_customer-per-order_id",
         "explanation": "notify_customer within max 1 for each of 1 order_id value(s)",
+        "status": "pass"
+      },
+      {
+        "contract": "relational-sum-refunds-amount_cents-per-order_id",
+        "explanation": "effect holds: refunds amount_cents sum within orders.amount_cents for 1 order_id values",
         "status": "pass"
       }
     ],

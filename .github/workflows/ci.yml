@@ -228,9 +228,12 @@ jobs:
       - name: Build attest main
         id: attest
         uses: attest-framework/attest/.github/actions/setup-attest@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
-        # setup-attest has no cache switch. setup-go may restore an archive, but Go
-        # reads only these fresh run/attempt-specific paths, never edge's cached paths.
+        # setup-attest has no cache switch. Its pinned setup-go checks these service
+        # URLs before restoring: empty URLs disable cache restore/save in this call.
+        # Go also uses fresh run/attempt-specific local module and build directories.
         env:
+          ACTIONS_CACHE_URL: ''
+          ACTIONS_RESULTS_URL: ''
           GOCACHE: ${{ runner.temp }}/annotate-go-${{ github.run_id }}-${{ github.run_attempt }}/build
           GOMODCACHE: ${{ runner.temp }}/annotate-go-${{ github.run_id }}-${{ github.run_attempt }}/mod
         with:

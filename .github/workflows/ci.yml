@@ -1,4 +1,4 @@
-# Demo channels (contract C6; attest 1.1.0-rc.2 released, attest main edge):
+# Demo channels (contract C6; attest 1.1.0-rc.3 released, attest main edge):
 #   edge      this commit against attest `main`, built by setup-attest
 #   released  the latest verified-<version> tag against its published packages
 # No job calls a paid model: the scripted model server answers the agent and the
@@ -221,7 +221,7 @@ jobs:
           path: .
 
       - name: Gate the reports and annotate
-        uses: attest-framework/attest/.github/actions/pr-annotate@f81ccdc15f7903c51dfee4110d3950eb6b6bd579 # attest main (#157)
+        uses: attest-framework/attest/.github/actions/pr-annotate@52cc9b494c2ad8390aef17d40ff60484540b6603 # v1.1.0-rc.3
         with:
           report: |
             py/attest-report.py.json

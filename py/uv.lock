@@ -94,14 +94,14 @@ wheels = [
 
 [[package]]
 name = "attest-ai"
-version = "1.1.0rc2"
+version = "1.1.0rc3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/dd/7737897d33757b4887a6b2ecbcd7928335b4e16b0d8d3653b9fff9528a05/attest_ai-1.1.0rc2.tar.gz", hash = "sha256:c654e39178b01c9f3176c2bef5db717c17313c73591dfebc02808ef67e8adce1", size = 641711, upload-time = "2026-11-06T03:45:04.845Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/1f/04bb6c6d794e02e684242996ecef1128f0feda9ca23f739eaa740a552933/attest_ai-1.1.0rc3.tar.gz", hash = "sha256:8a938109619a5826f9f1900619048ba93d9ec06bcdc85d1715ba7d025457f887", size = 646320, upload-time = "2026-11-06T12:36:08.789Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/c1/e56b9944c4269e13f0caf17cbdc53a789d5442ce73618f5ee237c682e3fd/attest_ai-1.1.0rc2-py3-none-any.whl", hash = "sha256:efbb1860b76571a86e2d7617992cacbeb926cd186623156f9510af7268ed0b78", size = 149798, upload-time = "2026-11-06T03:45:03.22Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/b3/2fa7d00d8a300a875ba2990573d9940bdc8ed3011be8247b7d9fb0086b62/attest_ai-1.1.0rc3-py3-none-any.whl", hash = "sha256:75218af17766c47a93d1ccd9813cffb7df62340f4d209fe0287cf91333f8b5c1", size = 150930, upload-time = "2026-11-06T12:36:07.12Z" },
 ]
 
 [[package]]
@@ -1016,7 +1016,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "attest-ai", specifier = "==1.1.0rc2" },
+    { name = "attest-ai", specifier = "==1.1.0rc3" },
     { name = "mypy", specifier = ">=1.18" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "ruff", specifier = ">=0.14" },

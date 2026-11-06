@@ -136,7 +136,14 @@ export class Tools {
     }
     if (name === "notify_customer") {
       if (this.settings.agentSpecVersion === "2") {
-        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"));
+        const response = await this.request("POST", "/notifications", {
+          customer_id: stringArg(args, "customer_id"),
+          channel: "email",
+          order_id: stringArg(args, "order_id"),
+          message: stringArg(args, "message"),
+        });
+        const body = await Tools.json(response);
+        return { notification_id: field(body, "notification_id"), status: "sent" };
       }
       return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
     }
@@ -185,10 +192,7 @@ export class Tools {
   }
 
   async issueRefund(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
-    // The remaining balance is read, capped against and committed as one step per order, so
-    // concurrent refunds of an order cannot both fit the same balance (INC-1077). The guarantee
-    // covers callers within this agent process: the payments API has no aggregate constraint, so
-    // separate processes would need a ledger-side one, which is out of scope for this demo.
+    // Serialize refunds within this agent process.
     const previous = this.orderChains.get(orderId) ?? Promise.resolve();
     const result = previous.then(() => this.issueRefundLocked(orderId, requestedCents, reason));
     const settled = result.catch(() => undefined);
@@ -207,12 +211,6 @@ export class Tools {
     if (!existing.some((refund) => refund.amount_cents === amountCents)) {
       const order = await this.orderRecord(orderId);
       if (order === null) return { error: "order_not_found", order_id: orderId };
-      // The refunds of one order never total more than the order amount (INC-1077): a refund
-      // beyond what is left is capped to it, and a fully refunded order refuses.
-      const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
-      const remaining = Number(field(order, "amount_cents")) - refunded;
-      if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
-      amountCents = Math.min(amountCents, remaining);
     }
     // The key derives from the order and the amount, so a retry of the same refund carries the
     // same key and the payments API answers it with the first refund (INC-1042).

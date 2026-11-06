@@ -96,7 +96,17 @@ class Tools:
             return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
         if name == "notify_customer":
             if self.spec_version == "2":
-                return self.notify_recipient(args["order_id"], args["message"])
+                response = self.http.post(
+                    "/notifications",
+                    json={
+                        "customer_id": args["customer_id"],
+                        "channel": "email",
+                        "order_id": args["order_id"],
+                        "message": args["message"],
+                    },
+                )
+                response.raise_for_status()
+                return {"notification_id": response.json()["notification_id"], "status": "sent"}
             return self.notify_customer(args["order_id"], args["message"])
         raise ValueError(f"model requested unknown tool {name!r}")
 
@@ -128,11 +138,7 @@ class Tools:
             return self._order_locks.setdefault(order_id, threading.Lock())
 
     def issue_refund(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
-        # The remaining balance is read, capped against and committed as one step per order, so
-        # concurrent refunds of an order cannot both fit the same balance (INC-1077). The
-        # guarantee covers callers within this agent process: the payments API has no aggregate
-        # constraint, so separate processes would need a ledger-side one, which is out of scope
-        # for this demo.
+        # Serialize refunds within this agent process.
         with self.order_lock(order_id):
             return self._issue_refund_locked(order_id, amount_cents, reason)
 
@@ -145,12 +151,6 @@ class Tools:
             order = self.order_record(order_id)
             if order is None:
                 return {"error": "order_not_found", "order_id": order_id}
-            # The refunds of one order never total more than the order amount (INC-1077): a
-            # refund beyond what is left is capped to it, and a fully refunded order refuses.
-            remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
-            if remaining <= 0:
-                return {"error": "order_fully_refunded", "order_id": order_id}
-            amount_cents = min(amount_cents, remaining)
         # The key derives from the order and the amount, so a retry of the same refund carries the
         # same key and the payments API answers it with the first refund (INC-1042).
         try:

@@ -5,3 +5,7 @@ layers:
     max_hard_fails: 0
 # The scripted judge always answers, so an assertion that was not evaluated is a defect here.
 not_evaluated: block
+# An assertion that passed in the baseline (the latest green main run) and does not pass now
+# blocks. Needs `--baseline <tag>`: `make check BASELINE_DIR=<main's reports>` passes it; without
+# a baseline the Makefile evaluates this file minus this line (see policy-file).
+block_on_regression: true

@@ -219,7 +219,7 @@ class Walkthrough:
             raise ActError(expected, "the live suites passed on the unfixed agent")
         policy_exits = {
             name: self.attest(
-                "policy", "evaluate", "--policy", "attest.policy.yaml",
+                "policy", "evaluate", "--policy", "reports/attest.policy.no-baseline.yaml",
                 "--report", f"reports/{name}", root=copy,
             ).code
             for name in LIVE_REPORTS

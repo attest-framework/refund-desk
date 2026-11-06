@@ -197,7 +197,7 @@ The hashes are the first seven characters of a hash of the old and new system pr
 
 The same change reverted is the regression pull request [#12](https://github.com/attest-framework/refund-desk/pull/12) (closed unmerged, as planned). Its [summary](https://github.com/attest-framework/refund-desk/pull/12#issuecomment-6609149501) lists `effect violated: 2 refunds for O-1042 (expected 1)` with file and line (`py/tests/test_refund_desk.py:77`, `ts/tests/refund-desk.test.ts:69`), two replay misses and `Policy: fail (exit 1)`; the failures also show as annotations in the checks list. [#22](https://github.com/attest-framework/refund-desk/pull/22) repeats the regression to show the failure viewer (Act 6).
 
-`make walkthrough` reproduces both outcomes locally: the fixed tree passes `make check-py check-ts replay-tests` and `attest report summary` over the four reports reads `0 live model calls · $0.00`; the copy with the fix reverted fails the live effect tests with the message above, and `attest policy evaluate --policy attest.policy.yaml` exits 1 for both languages.
+`make walkthrough` reproduces both outcomes locally: the fixed tree passes `make check-py check-ts replay-tests` and `attest report summary` over the four reports reads `0 live model calls · $0.00`; the copy with the fix reverted fails the live effect tests with the message above, and `attest policy evaluate` exits 1 for both languages under `attest.policy.yaml` minus its `block_on_regression` line (`reports/attest.policy.no-baseline.yaml`, written by `make policy-file`): that rule needs a baseline and `attest policy evaluate` exits 3 without `--baseline`.
 
 
 #### The fix
@@ -267,7 +267,7 @@ The check fails on a spec whose status differs between the languages and on a sp
 
 `make check` runs the report-writing suites with `ATTEST_REPORT_TRACES=1` (the data here is synthetic, so embedding traces is safe) and runs `make view` before the final outage act; `make view` writes `reports/attest-report.html` from the four reports (`attest-report.{py,ts}.json` and `attest-report.replay.{py,ts}.json`). The page is written even when a suite failed.
 
-- **From a pull request:** open the `edge` job of the PR's workflow run and download the `attest-report-html` artifact (it is a zip holding `attest-report.html`); open the file in a browser. On a pull request the job first downloads the `attest-reports` artifact of the latest successful run on `main` and passes it as the baseline, so the page carries a baseline-versus-head section: pass rate, cost, latency and every test whose tool sequence changed. A repository without a successful `main` run yet renders the page without a baseline and says so.
+- **From a pull request:** open the `edge` job of the PR's workflow run and download the `attest-report-html` artifact (it is a zip holding `attest-report.html`); open the file in a browser. On a pull request the job first downloads the `attest-reports` artifact of the latest successful run on `main` and passes it as the baseline, so the page carries a baseline-versus-head section: pass rate, cost, latency and every test whose tool sequence changed. The job fails when `main` has runs but none with an unexpired `attest-reports` artifact (artifacts are kept 30 days; the nightly run refreshes them). Recovery: run `ci.yml` on `main` (`gh workflow run ci.yml --ref main`, or Actions, ci, Run workflow), wait for it to pass, then re-run the failed job. The same recovery applies after an attest assertion id changes (`block_on_regression` also blocks a baselined assertion that vanished). Only a repository with no successful `main` run at all renders the page without a baseline, with a logged warning.
 - **Locally:** `make view CHANNEL=edge` opens the page after a `make check`; `NO_OPEN=1` only writes it; `BASELINE_DIR=<dir>` compares against the four reports of an earlier run kept in that directory. `make check` deletes the previous reports first; `make replay-miss` rewrites the two replay reports with its deliberate miss, so run `make check` again before `make view`.
 
 The Act 4 effect test is the one that records the agent's own OpenTelemetry spans (`chat <model>`, `execute_tool <name>`) into its attest trace and adds `tool_cardinality("issue_refund", per="order_id", at_most=1)` to its effect checks; the three Act 1 tests stay output-only. On the fixed agent the contract passes. With the INC-1042 fix reverted (the regression pull request, as in [#12](https://github.com/attest-framework/refund-desk/pull/12)) the contract hard-fails and the viewer outlines the second `issue_refund` span (`steps[N]` in the failing row's trace node) as the failing span, next to the baseline diff (`+issue_refund`).
@@ -284,7 +284,7 @@ make outage
 
 - every layer-6 row is `not_evaluated` with reason `provider_unavailable`, and no row is a hard failure;
 - `attest policy evaluate --policy outage.policy.yaml` exits 2: [`outage.policy.yaml`](outage.policy.yaml) is `attest.policy.yaml` with `not_evaluated: warn`;
-- the same report under `attest.policy.yaml` exits 1, which is why the two policies differ.
+- the same report under `attest.policy.yaml` minus `block_on_regression` (`reports/attest.policy.no-baseline.yaml`; the rule needs `--baseline`, and `attest policy evaluate` exits 3 without it) exits 1, which is why the two policies differ.
 
 Reports are written to `reports/outage/`. It runs on both channels and is the last step of `make check`. The plan's story places the outage after the regression; the demo numbers it last (Act 7) so the existing Act 5 and Act 6 names stay.
 
@@ -299,6 +299,8 @@ make setup CHANNEL=edge      # uv sync (py/) and pnpm install (ts/), with attest
 make incident CHANNEL=edge   # run the incident request in Python and TypeScript, print the payments ledger, require one refund
 make check CHANNEL=edge      # lint, type-check and run the attest tests in both languages
 ```
+
+`attest.policy.yaml` sets `block_on_regression`, which needs a baseline. `make check BASELINE_DIR=<dir>` (the four `attest-report*.json` of an earlier green `main` run) pins them as `main-py`, `main-ts`, `main-replay-py` and `main-replay-ts` and evaluates the live and replay reports with `--baseline`; without `BASELINE_DIR` it evaluates the policy minus that rule and says so. `PYTEST_XDIST="-n auto"` runs the Python suites in parallel (Vitest stays serial: the tests share one payments URL).
 
 | Path | What it is |
 |---|---|
@@ -323,8 +325,8 @@ attest is installed from one of two channels:
 
 | Channel | attest | Runs in CI |
 |---|---|---|
-| `CHANNEL=released` (default) | The published packages pinned in `py/uv.lock` and `ts/package.json` | On the latest `verified-<version>` tag |
-| `CHANNEL=edge` | attest `main`, built from source | On every push and pull request |
+| `CHANNEL=released` (default) | The published packages pinned in `py/uv.lock` and `ts/package.json` | On the latest `verified-<version>` tag, and nightly (05:17 UTC) and on manual dispatch as `make walkthrough CHANNEL=released` |
+| `CHANNEL=edge` | attest `main`, built from source | On every push and pull request, and nightly (the run refreshes main's baseline reports) |
 
 Run the edge channel locally from an attest checkout:
 

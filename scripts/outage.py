@@ -31,7 +31,9 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "outage"
 JUDGE_LAYER = 6
 WARN_POLICY = ROOT / "outage.policy.yaml"
-BLOCK_POLICY = ROOT / "attest.policy.yaml"
+# attest.policy.yaml minus block_on_regression, which these standalone reports have no baseline for;
+# `make policy-file` writes it.
+BLOCK_POLICY = ROOT / "reports" / "attest.policy.no-baseline.yaml"
 PY_REPORT = OUT / "attest-report.py.json"
 TS_REPORT = OUT / "attest-report.ts.json"
 

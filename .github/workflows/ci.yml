@@ -66,9 +66,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
-            --status success --json databaseId,headSha,event --limit 40)"
-          runs="$(echo "$runs" | jq -c '[.[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "schedule")][:20]')"
+          # One query per trusted event, so the API filters by event: pull_request runs (including
+          # fork PRs from a branch named main) can never fill the window and hide main's runs.
+          runs="$(for ev in push workflow_dispatch schedule; do
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+                --status success --event "$ev" --limit 20 --json databaseId,headSha,createdAt || exit 1
+            done | jq -sc 'add | sort_by(.createdAt) | reverse | .[:20]')"
           if [ "$(echo "$runs" | jq length)" -eq 0 ]; then
             echo "::warning::Baseline bootstrap: no successful push, workflow_dispatch or schedule run of ci.yml on main yet, so this run has no baseline and block_on_regression is not enforced. The first green push to main creates it."
             exit 0

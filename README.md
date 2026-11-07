@@ -310,6 +310,11 @@ The existing INC-1042 acts and frozen evidence are retained. The walkthrough use
 copies for regressions, never modifies the working agent, and never runs a coding agent or
 calls a paid provider. Each command's evidence is in `reports/walkthrough/`.
 
+INC-1077 Acts 1–2 apply the combined `regression/revert-inc-1077-fix.patch`;
+Act 3 applies `regression/recipient-only-inc-1077.patch` with the refund cap intact.
+Both are generated from the fixed agents with `git diff`, including full hunk context,
+so `patch --batch --forward --fuzz=0 -p1` applies them on GNU/Linux and macOS alike.
+
 | Act | Checked outcome |
 |---|---|
 | **1 — the old suite stays green** | The INC-1042 pytest suite runs with `-n auto` and the Vitest suite runs in its pool, both writing reports. INC-1042 keeps cardinality **1**; INC-1077 allows **2**. Both unfixed agents show R-0001 **$12.00** + R-0002 **$126.00** in the incident ledger. |

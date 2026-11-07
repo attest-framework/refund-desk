@@ -573,7 +573,8 @@ jobs:
 
       # The nightly run replaces make check with the walkthrough, which runs every suite itself
       # (scripts/walkthrough.py), and fails the job on the first act that ends differently. A
-      # manual dispatch runs both.
+      # manual dispatch runs both. INCIDENT=all walks INC-1042 and INC-1077; the Makefile's default
+      # is INC-1042 only. Verified tags from verified-1.1.0-rc.4 on support it.
       - name: make check
         if: steps.tag.outputs.tag != '' && github.event_name != 'schedule'
         env:
@@ -584,7 +585,7 @@ jobs:
         if: steps.tag.outputs.tag != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           PYTEST_XDIST: -n auto
-        run: make walkthrough CHANNEL=released
+        run: make walkthrough INCIDENT=all CHANNEL=released
 
       - name: Upload reports
         if: always() && steps.tag.outputs.tag != ''

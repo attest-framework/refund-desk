@@ -46,7 +46,7 @@ class Incident1077(Walkthrough):
                 raise ActError("regression patch applies", applied.output)
         setup = self.make("setup", root=copy)
         if setup.code:
-            raise ActError("scratch copy set up on edge", setup.output)
+            raise ActError(f"scratch copy set up on {self.channel}", setup.output)
         (copy / "reports").mkdir(exist_ok=True)
         return copy
 
@@ -55,8 +55,6 @@ class Incident1077(Walkthrough):
             shutil.rmtree(copy, ignore_errors=True)
 
     def act_partial_refund(self) -> str:
-        if self.channel != "edge":
-            raise ActError("INC-1077 on edge (released support starts at rc.4)", self.channel)
         self.broken = self.scratch(
             "over-refund-only-inc-1077.patch", "recipient-only-inc-1077.patch"
         )

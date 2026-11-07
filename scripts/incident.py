@@ -5,7 +5,7 @@ fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault is 
 incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077) with
 `attest-engine world`, run the agent on the incident's customer message, write
 trace.<lang>.otlp.json and print the ledger from the world's final snapshot. The engine comes
-from ATTEST_ENGINE_PATH.
+from the installed Python SDK's engine discovery (or ATTEST_ENGINE_PATH on edge).
 
 INC-1042: require exactly one refund for O-1042 in the ledger (the current agent's fix), write the
 traces to .stack/incident-traces/ (incidents/INC-1042/ holds the frozen traces of the shipped
@@ -158,9 +158,13 @@ def print_ledger(
 
 def run_in_fresh_world(world: Path, command: list[str]) -> tuple[str, dict[str, Any]]:
     """Run the agent under its own `attest-engine world`; return its reply and the final state."""
-    engine = os.environ.get("ATTEST_ENGINE_PATH")
-    if not engine:
-        raise SystemExit("ATTEST_ENGINE_PATH is not set: run `make incident CHANNEL=edge`")
+    engine = subprocess.check_output(
+        [
+            "uv", "run", "--project", str(ROOT / "py"), "--no-sync", "python", "-c",
+            "from attest.engine_manager import resolve_engine; print(resolve_engine())",
+        ],
+        text=True,
+    ).strip()  # fmt: skip
     with tempfile.TemporaryDirectory(prefix="refund-desk-world-") as directory:
         state_out = Path(directory) / "state.json"
         engine_command = [engine, "world", "--file", str(world), "--state-out", str(state_out)]

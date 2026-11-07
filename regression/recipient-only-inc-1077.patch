@@ -1,6 +1,8 @@
+diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
+index 0bfffca..b248a90 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
-@@ -96,7 +96,7 @@
+@@ -96,7 +96,7 @@ class Tools:
              return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
          if name == "notify_customer":
              if self.spec_version == "2":
@@ -9,7 +11,8 @@
              return self.notify_customer(args["order_id"], args["message"])
          raise ValueError(f"model requested unknown tool {name!r}")
  
-@@ -193,14 +193,13 @@
+@@ -192,17 +192,16 @@ class Tools:
+         response.raise_for_status()
          return {"notification_id": response.json()["notification_id"], "status": "sent"}
  
 -    def notify_recipient(self, order_id: str, message: str) -> dict[str, Any]:
@@ -26,9 +29,13 @@
              return {"error": "order_not_found", "order_id": order_id}
 -        customer_id = order["customer_id"]
          response = self.http.post(
+             "/notifications",
+             json={
+diff --git a/ts/src/agent.ts b/ts/src/agent.ts
+index 6e53817..27ee169 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
-@@ -136,7 +136,7 @@
+@@ -136,7 +136,7 @@ export class Tools {
      }
      if (name === "notify_customer") {
        if (this.settings.agentSpecVersion === "2") {
@@ -37,7 +44,9 @@
        }
        return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
      }
-@@ -274,7 +274,7 @@
+@@ -272,11 +272,11 @@ export class Tools {
+    * a session that looked up another customer's order earlier must not send this order's
+    * confirmation there (INC-1077).
     */
 -  async notifyRecipient(orderId: string, message: string): Promise<ToolResult> {
 -    const order = await this.orderRecord(orderId);
@@ -48,3 +57,5 @@
 -      customer_id: field(order, "customer_id"),
 +      customer_id: customerId,
        channel: "email",
+       order_id: orderId,
+       message,

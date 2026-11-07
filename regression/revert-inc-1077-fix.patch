@@ -1,0 +1,79 @@
+diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
+index 0bfffca..d500749 100644
+--- a/py/src/refund_desk/agent.py
++++ b/py/src/refund_desk/agent.py
+@@ -96,7 +96,7 @@ class Tools:
+             return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
+         if name == "notify_customer":
+             if self.spec_version == "2":
+-                return self.notify_recipient(args["order_id"], args["message"])
++                return self.notify_recipient(args["order_id"], args["message"], args["customer_id"])
+             return self.notify_customer(args["order_id"], args["message"])
+         raise ValueError(f"model requested unknown tool {name!r}")
+ 
+@@ -152,7 +152,7 @@ class Tools:
+             remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
+             if remaining <= 0:
+                 return {"error": "order_fully_refunded", "order_id": order_id}
+-            amount_cents = min(amount_cents, remaining)
++            amount_cents = requested_cents
+         # The key derives from the order and the amount, so a retry of the same refund carries the
+         # same key and the payments API answers it with the first refund (INC-1042).
+         try:
+@@ -192,17 +192,16 @@ class Tools:
+         response.raise_for_status()
+         return {"notification_id": response.json()["notification_id"], "status": "sent"}
+ 
+-    def notify_recipient(self, order_id: str, message: str) -> dict[str, Any]:
++    def notify_recipient(self, order_id: str, message: str, customer_id: str) -> dict[str, Any]:
+         """Agent-spec v2: the notification names the customer it goes to and the channel.
+ 
+         The recipient is the customer of the order's record, never the customer_id the model
+         passes: a session that looked up another customer's order earlier must not send this
+         order's confirmation there (INC-1077).
+         """
+-        order = self.order_record(order_id)
++        order = self.order_record("O-1042")
+         if order is None:
+             return {"error": "order_not_found", "order_id": order_id}
+-        customer_id = order["customer_id"]
+         response = self.http.post(
+             "/notifications",
+             json={
+diff --git a/ts/src/agent.ts b/ts/src/agent.ts
+index 6e53817..0b0558a 100644
+--- a/ts/src/agent.ts
++++ b/ts/src/agent.ts
+@@ -136,7 +136,7 @@ export class Tools {
+     }
+     if (name === "notify_customer") {
+       if (this.settings.agentSpecVersion === "2") {
+-        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"));
++        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"), stringArg(args, "customer_id"));
+       }
+       return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
+     }
+@@ -215,7 +215,7 @@ export class Tools {
+       const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
+       const remaining = Number(field(order, "amount_cents")) - refunded;
+       if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+-      amountCents = Math.min(amountCents, remaining);
++      amountCents = requestedCents;
+     }
+     // The key derives from the order and the amount, so a retry of the same refund carries the
+     // same key and the payments API answers it with the first refund (INC-1042).
+@@ -272,11 +272,11 @@ export class Tools {
+    * a session that looked up another customer's order earlier must not send this order's
+    * confirmation there (INC-1077).
+    */
+-  async notifyRecipient(orderId: string, message: string): Promise<ToolResult> {
+-    const order = await this.orderRecord(orderId);
++  async notifyRecipient(orderId: string, message: string, customerId: string): Promise<ToolResult> {
++    const order = await this.orderRecord("O-1042");
+     if (order === null) return { error: "order_not_found", order_id: orderId };
+     const response = await this.request("POST", "/notifications", {
+-      customer_id: field(order, "customer_id"),
++      customer_id: customerId,
+       channel: "email",
+       order_id: orderId,
+       message,

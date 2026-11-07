@@ -55,9 +55,7 @@ class Incident1077(Walkthrough):
             shutil.rmtree(copy, ignore_errors=True)
 
     def act_partial_refund(self) -> str:
-        self.broken = self.scratch(
-            "over-refund-only-inc-1077.patch", "recipient-only-inc-1077.patch"
-        )
+        self.broken = self.scratch("revert-inc-1077-fix.patch")
         commands = [
             [
                 "uv",

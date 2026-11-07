@@ -10,7 +10,7 @@ the model server's drift mode lowers the judge's score for that criterion and on
 same shape is submitted. The runner asks the engine for the drift verdict and posts one alert to
 the receiver, which logs every POST. The act passes when exactly one alert was logged.
 
-Needs the engine in ATTEST_ENGINE_PATH. No provider key and no paid call: the judge is scripted.
+Uses the installed SDK's engine discovery. No provider key and no paid call: the judge is scripted.
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ def reply_trace(n: int) -> Any:
 
 async def run(webhook: str, model: str) -> list[dict[str, Any]]:
     assertions = expect(reply_trace(0)).passes_judge(CRITERION, threshold="dynamic").assertions
-    async with EngineManager(os.environ["ATTEST_ENGINE_PATH"]) as engine:
+    async with EngineManager() as engine:
         runner = ContinuousEvalRunner(
             AttestClient(engine),
             assertions,
@@ -156,9 +156,6 @@ async def run(webhook: str, model: str) -> list[dict[str, Any]]:
 
 
 def main() -> int:
-    if "ATTEST_ENGINE_PATH" not in os.environ:
-        print("drift: ATTEST_ENGINE_PATH must point at the attest engine", file=sys.stderr)
-        return 2
     for name in SCRUBBED:
         os.environ.pop(name, None)
     os.environ.update(ENGINE_ENV)

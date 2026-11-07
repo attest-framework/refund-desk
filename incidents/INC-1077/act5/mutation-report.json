@@ -1,0 +1,1284 @@
+{
+  "score": 0.22448979591836735,
+  "seed": 0,
+  "fixtures": [
+    "inc-1077"
+  ],
+  "mutants": [
+    {
+      "id": "inc-1077:drop_tool_call:1",
+      "fixture": "inc-1077",
+      "operator": "drop_tool_call",
+      "description": "drop lookup_order (order_id=O-1042)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:drop_tool_call:3",
+      "fixture": "inc-1077",
+      "operator": "drop_tool_call",
+      "description": "drop lookup_order (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:drop_tool_call:5",
+      "fixture": "inc-1077",
+      "operator": "drop_tool_call",
+      "description": "drop issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:drop_tool_call:7",
+      "fixture": "inc-1077",
+      "operator": "drop_tool_call",
+      "description": "drop issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:drop_tool_call:9",
+      "fixture": "inc-1077",
+      "operator": "drop_tool_call",
+      "description": "drop notify_customer (customer_id=C-0311)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:duplicate_tool_call:1",
+      "fixture": "inc-1077",
+      "operator": "duplicate_tool_call",
+      "description": "duplicate lookup_order (order_id=O-1042)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:duplicate_tool_call:3",
+      "fixture": "inc-1077",
+      "operator": "duplicate_tool_call",
+      "description": "duplicate lookup_order (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:duplicate_tool_call:5",
+      "fixture": "inc-1077",
+      "operator": "duplicate_tool_call",
+      "description": "duplicate issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:duplicate_tool_call:7",
+      "fixture": "inc-1077",
+      "operator": "duplicate_tool_call",
+      "description": "duplicate issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:duplicate_tool_call:9",
+      "fixture": "inc-1077",
+      "operator": "duplicate_tool_call",
+      "description": "duplicate notify_customer (customer_id=C-0311)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:reorder_tool_calls:3-5",
+      "fixture": "inc-1077",
+      "operator": "reorder_tool_calls",
+      "description": "swap lookup_order and issue_refund",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:reorder_tool_calls:7-9",
+      "fixture": "inc-1077",
+      "operator": "reorder_tool_calls",
+      "description": "swap issue_refund and notify_customer",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:1.order_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb lookup_order.order_id (O-1042 -\u003e O-1042_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:3.order_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb lookup_order.order_id (O-2077 -\u003e O-2077_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:5.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.amount_cents (1200 -\u003e 2400)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:5.order_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.order_id (O-2077 -\u003e O-2077_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:5.reason",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.reason (shipping refund -\u003e shipping refund_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:7.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.amount_cents (12600 -\u003e 25200)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:7.order_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.order_id (O-2077 -\u003e O-2077_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:7.reason",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb issue_refund.reason (whole order refund -\u003e whole order refund_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:9.customer_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb notify_customer.customer_id (C-0311 -\u003e C-0311_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:9.message",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb notify_customer.message (Your refund of $114.00 for order O-2077 has been processed. -\u003e Your refund of $114.00 for order O-2077 has been processed._x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:perturb_argument:9.order_id",
+      "fixture": "inc-1077",
+      "operator": "perturb_argument",
+      "description": "perturb notify_customer.order_id (O-2077 -\u003e O-2077_x)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:inject_tool_error:1",
+      "fixture": "inc-1077",
+      "operator": "inject_tool_error",
+      "description": "inject error into lookup_order (order_id=O-1042)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:inject_tool_error:3",
+      "fixture": "inc-1077",
+      "operator": "inject_tool_error",
+      "description": "inject error into lookup_order (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:inject_tool_error:5",
+      "fixture": "inc-1077",
+      "operator": "inject_tool_error",
+      "description": "inject error into issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:inject_tool_error:7",
+      "fixture": "inc-1077",
+      "operator": "inject_tool_error",
+      "description": "inject error into issue_refund (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:inject_tool_error:9",
+      "fixture": "inc-1077",
+      "operator": "inject_tool_error",
+      "description": "inject error into notify_customer (customer_id=C-0311)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:notifications.0.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate notifications record 0 (customer_id=C-0744)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:notifications.0.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop notifications record 0 (customer_id=C-0744)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:notifications.0.redirect.orders.order_id.customer_id",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "redirect notifications record 0 (customer_id=C-0744): customer_id C-0744 -\u003e C-0744_x, away from orders.customer_id",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_5345e0f022629fe76a254b383c9ab648",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "check": "matches",
+            "field": "customer_id",
+            "related": {
+              "resource": "orders",
+              "field": "customer_id",
+              "on": "order_id"
+            },
+            "resource": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:notifications.0.change.channel",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change notifications record 0 (customer_id=C-0744): channel email -\u003e email_x",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.0.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate orders record 0 (customer_id=C-0311)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        },
+        {
+          "assertion_id": "a2_5345e0f022629fe76a254b383c9ab648",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "check": "matches",
+            "field": "customer_id",
+            "related": {
+              "resource": "orders",
+              "field": "customer_id",
+              "on": "order_id"
+            },
+            "resource": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.0.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop orders record 0 (customer_id=C-0311)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.0.change.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change orders record 0 (customer_id=C-0311): amount_cents 8400 -\u003e 16800",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.1.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate orders record 1 (customer_id=C-0520)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        },
+        {
+          "assertion_id": "a2_5345e0f022629fe76a254b383c9ab648",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "check": "matches",
+            "field": "customer_id",
+            "related": {
+              "resource": "orders",
+              "field": "customer_id",
+              "on": "order_id"
+            },
+            "resource": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.1.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop orders record 1 (customer_id=C-0520)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.1.change.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change orders record 1 (customer_id=C-0520): amount_cents 2650 -\u003e 5300",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.2.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate orders record 2 (customer_id=C-0744)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        },
+        {
+          "assertion_id": "a2_5345e0f022629fe76a254b383c9ab648",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "check": "matches",
+            "field": "customer_id",
+            "related": {
+              "resource": "orders",
+              "field": "customer_id",
+              "on": "order_id"
+            },
+            "resource": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.2.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop orders record 2 (customer_id=C-0744)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        },
+        {
+          "assertion_id": "a2_5345e0f022629fe76a254b383c9ab648",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "check": "matches",
+            "field": "customer_id",
+            "related": {
+              "resource": "orders",
+              "field": "customer_id",
+              "on": "order_id"
+            },
+            "resource": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:orders.2.change.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change orders record 2 (customer_id=C-0744): amount_cents 12600 -\u003e 25200",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.0.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate refunds record 0 (order_id=O-2077)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.0.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop refunds record 0 (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.0.exceed.orders.order_id.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "raise refunds record 0 (order_id=O-2077): amount_cents 1200 -\u003e 12601, above orders.amount_cents 12600",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.0.change.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change refunds record 0 (order_id=O-2077): amount_cents 1200 -\u003e 2400",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.1.duplicate",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "duplicate refunds record 1 (order_id=O-2077)",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.1.drop",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "drop refunds record 1 (order_id=O-2077)",
+      "status": "survived",
+      "killed_by": []
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.1.exceed.orders.order_id.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "raise refunds record 1 (order_id=O-2077): amount_cents 11400 -\u003e 12601, above orders.amount_cents 12600",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "id": "inc-1077:alter_world_effect:refunds.1.change.amount_cents",
+      "fixture": "inc-1077",
+      "operator": "alter_world_effect",
+      "description": "change refunds record 1 (order_id=O-2077): amount_cents 11400 -\u003e 22800",
+      "status": "killed",
+      "killed_by": [
+        {
+          "assertion_id": "a2_3dee419a87485e81c50672a28f4188b0",
+          "type": "effect",
+          "test_id": "incidents/INC-1077/act5/test_drafted_contract.py::test_drafted_contract_passes_the_fixed_capture",
+          "spec": {
+            "at_most": {
+              "related": {
+                "resource": "orders",
+                "field": "amount_cents",
+                "on": "order_id"
+              }
+            },
+            "check": "sum",
+            "field": "amount_cents",
+            "resource": "refunds"
+          }
+        }
+      ]
+    }
+  ],
+  "survivors_suggestions": [
+    {
+      "mutant_id": "inc-1077:drop_tool_call:1",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "min": 2,
+          "soft": false,
+          "tool": "lookup_order"
+        },
+        "description": "lookup_order is called at least 2 times"
+      },
+      "description": "drop lookup_order (order_id=O-1042)"
+    },
+    {
+      "mutant_id": "inc-1077:drop_tool_call:3",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "min": 2,
+          "soft": false,
+          "tool": "lookup_order"
+        },
+        "description": "lookup_order is called at least 2 times"
+      },
+      "description": "drop lookup_order (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:drop_tool_call:5",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "min": 2,
+          "soft": false,
+          "tool": "issue_refund"
+        },
+        "description": "issue_refund is called at least 2 times"
+      },
+      "description": "drop issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:drop_tool_call:7",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "min": 2,
+          "soft": false,
+          "tool": "issue_refund"
+        },
+        "description": "issue_refund is called at least 2 times"
+      },
+      "description": "drop issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:drop_tool_call:9",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "required_tools",
+          "soft": false,
+          "tools": [
+            "notify_customer"
+          ]
+        },
+        "description": "notify_customer is called"
+      },
+      "description": "drop notify_customer (customer_id=C-0311)"
+    },
+    {
+      "mutant_id": "inc-1077:duplicate_tool_call:1",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "max": 1,
+          "per": "order_id",
+          "soft": false,
+          "tool": "lookup_order"
+        },
+        "description": "lookup_order is called at most 1× per order_id"
+      },
+      "description": "duplicate lookup_order (order_id=O-1042)"
+    },
+    {
+      "mutant_id": "inc-1077:duplicate_tool_call:3",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "max": 1,
+          "per": "order_id",
+          "soft": false,
+          "tool": "lookup_order"
+        },
+        "description": "lookup_order is called at most 1× per order_id"
+      },
+      "description": "duplicate lookup_order (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:duplicate_tool_call:5",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "max": 2,
+          "per": "order_id",
+          "soft": false,
+          "tool": "issue_refund"
+        },
+        "description": "issue_refund is called at most 2× per order_id"
+      },
+      "description": "duplicate issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:duplicate_tool_call:7",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "max": 2,
+          "per": "order_id",
+          "soft": false,
+          "tool": "issue_refund"
+        },
+        "description": "issue_refund is called at most 2× per order_id"
+      },
+      "description": "duplicate issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:duplicate_tool_call:9",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "tool_cardinality",
+          "max": 1,
+          "per": "customer_id",
+          "soft": false,
+          "tool": "notify_customer"
+        },
+        "description": "notify_customer is called at most 1× per customer_id"
+      },
+      "description": "duplicate notify_customer (customer_id=C-0311)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:1.order_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "order_id",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "lookup_order",
+          "value": [
+            "O-1042",
+            "O-2077"
+          ]
+        },
+        "description": "lookup_order.order_id is one of the captured values"
+      },
+      "description": "perturb lookup_order.order_id (O-1042 -\u003e O-1042_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:3.order_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "order_id",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "lookup_order",
+          "value": [
+            "O-1042",
+            "O-2077"
+          ]
+        },
+        "description": "lookup_order.order_id is one of the captured values"
+      },
+      "description": "perturb lookup_order.order_id (O-2077 -\u003e O-2077_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:5.amount_cents",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "amount_cents",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": [
+            1200,
+            12600
+          ]
+        },
+        "description": "issue_refund.amount_cents is one of the captured values"
+      },
+      "description": "perturb issue_refund.amount_cents (1200 -\u003e 2400)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:5.order_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "order_id",
+          "check": "arg_predicate",
+          "op": "eq",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": "O-2077"
+        },
+        "description": "issue_refund.order_id equals O-2077"
+      },
+      "description": "perturb issue_refund.order_id (O-2077 -\u003e O-2077_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:5.reason",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "reason",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": [
+            "shipping refund",
+            "whole order refund"
+          ]
+        },
+        "description": "issue_refund.reason is one of the captured values"
+      },
+      "description": "perturb issue_refund.reason (shipping refund -\u003e shipping refund_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:7.amount_cents",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "amount_cents",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": [
+            1200,
+            12600
+          ]
+        },
+        "description": "issue_refund.amount_cents is one of the captured values"
+      },
+      "description": "perturb issue_refund.amount_cents (12600 -\u003e 25200)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:7.order_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "order_id",
+          "check": "arg_predicate",
+          "op": "eq",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": "O-2077"
+        },
+        "description": "issue_refund.order_id equals O-2077"
+      },
+      "description": "perturb issue_refund.order_id (O-2077 -\u003e O-2077_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:7.reason",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "reason",
+          "check": "arg_predicate",
+          "op": "in",
+          "soft": false,
+          "tool": "issue_refund",
+          "value": [
+            "shipping refund",
+            "whole order refund"
+          ]
+        },
+        "description": "issue_refund.reason is one of the captured values"
+      },
+      "description": "perturb issue_refund.reason (whole order refund -\u003e whole order refund_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:9.customer_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "customer_id",
+          "check": "arg_predicate",
+          "op": "eq",
+          "soft": false,
+          "tool": "notify_customer",
+          "value": "C-0311"
+        },
+        "description": "notify_customer.customer_id equals C-0311"
+      },
+      "description": "perturb notify_customer.customer_id (C-0311 -\u003e C-0311_x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:9.message",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "message",
+          "check": "arg_predicate",
+          "op": "eq",
+          "soft": false,
+          "tool": "notify_customer",
+          "value": "Your refund of $114.00 for order O-2077 has been processed."
+        },
+        "description": "notify_customer.message equals Your refund of $114.00 for order O-2077 has been processed."
+      },
+      "description": "perturb notify_customer.message (Your refund of $114.00 for order O-2077 has been processed. -\u003e Your refund of $114.00 for order O-2077 has been processed._x)"
+    },
+    {
+      "mutant_id": "inc-1077:perturb_argument:9.order_id",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "arg": "order_id",
+          "check": "arg_predicate",
+          "op": "eq",
+          "soft": false,
+          "tool": "notify_customer",
+          "value": "O-2077"
+        },
+        "description": "notify_customer.order_id equals O-2077"
+      },
+      "description": "perturb notify_customer.order_id (O-2077 -\u003e O-2077_x)"
+    },
+    {
+      "mutant_id": "inc-1077:inject_tool_error:1",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "failure_streak",
+          "max": 0,
+          "soft": false
+        },
+        "description": "no more than 0 tool call(s) fail in a row"
+      },
+      "description": "inject error into lookup_order (order_id=O-1042)"
+    },
+    {
+      "mutant_id": "inc-1077:inject_tool_error:3",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "failure_streak",
+          "max": 0,
+          "soft": false
+        },
+        "description": "no more than 0 tool call(s) fail in a row"
+      },
+      "description": "inject error into lookup_order (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:inject_tool_error:5",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "failure_streak",
+          "max": 0,
+          "soft": false
+        },
+        "description": "no more than 0 tool call(s) fail in a row"
+      },
+      "description": "inject error into issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:inject_tool_error:7",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "failure_streak",
+          "max": 0,
+          "soft": false
+        },
+        "description": "no more than 0 tool call(s) fail in a row"
+      },
+      "description": "inject error into issue_refund (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:inject_tool_error:9",
+      "contract": {
+        "type": "trace",
+        "spec": {
+          "check": "failure_streak",
+          "max": 0,
+          "soft": false
+        },
+        "description": "no more than 0 tool call(s) fail in a row"
+      },
+      "description": "inject error into notify_customer (customer_id=C-0311)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:notifications.0.duplicate",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "notifications",
+          "where": {
+            "customer_id": "C-0744"
+          }
+        },
+        "description": "notifications has exactly 1 matching record(s)"
+      },
+      "description": "duplicate notifications record 0 (customer_id=C-0744)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:notifications.0.drop",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "notifications",
+          "where": {
+            "customer_id": "C-0744"
+          }
+        },
+        "description": "notifications has exactly 1 matching record(s)"
+      },
+      "description": "drop notifications record 0 (customer_id=C-0744)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:notifications.0.change.channel",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "notifications",
+          "where": {
+            "channel": "email",
+            "customer_id": "C-0744"
+          }
+        },
+        "description": "notifications has exactly 1 matching record(s)"
+      },
+      "description": "change notifications record 0 (customer_id=C-0744): channel email -\u003e email_x"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:orders.0.drop",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "orders",
+          "where": {
+            "customer_id": "C-0311"
+          }
+        },
+        "description": "orders has exactly 1 matching record(s)"
+      },
+      "description": "drop orders record 0 (customer_id=C-0311)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:orders.0.change.amount_cents",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "orders",
+          "where": {
+            "amount_cents": 8400,
+            "customer_id": "C-0311"
+          }
+        },
+        "description": "orders has exactly 1 matching record(s)"
+      },
+      "description": "change orders record 0 (customer_id=C-0311): amount_cents 8400 -\u003e 16800"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:orders.1.drop",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "orders",
+          "where": {
+            "customer_id": "C-0520"
+          }
+        },
+        "description": "orders has exactly 1 matching record(s)"
+      },
+      "description": "drop orders record 1 (customer_id=C-0520)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:orders.1.change.amount_cents",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "orders",
+          "where": {
+            "amount_cents": 2650,
+            "customer_id": "C-0520"
+          }
+        },
+        "description": "orders has exactly 1 matching record(s)"
+      },
+      "description": "change orders record 1 (customer_id=C-0520): amount_cents 2650 -\u003e 5300"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:orders.2.change.amount_cents",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 1,
+          "resource": "orders",
+          "where": {
+            "amount_cents": 12600,
+            "customer_id": "C-0744"
+          }
+        },
+        "description": "orders has exactly 1 matching record(s)"
+      },
+      "description": "change orders record 2 (customer_id=C-0744): amount_cents 12600 -\u003e 25200"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:refunds.0.drop",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 2,
+          "resource": "refunds",
+          "where": {
+            "order_id": "O-2077"
+          }
+        },
+        "description": "refunds has exactly 2 matching record(s)"
+      },
+      "description": "drop refunds record 0 (order_id=O-2077)"
+    },
+    {
+      "mutant_id": "inc-1077:alter_world_effect:refunds.1.drop",
+      "contract": {
+        "type": "effect",
+        "spec": {
+          "check": "count",
+          "equals": 2,
+          "resource": "refunds",
+          "where": {
+            "order_id": "O-2077"
+          }
+        },
+        "description": "refunds has exactly 2 matching record(s)"
+      },
+      "description": "drop refunds record 1 (order_id=O-2077)"
+    }
+  ],
+  "skipped_specs": 0,
+  "applicable_specs": 2,
+  "operators": [
+    {
+      "operator": "drop_tool_call",
+      "generated": 5,
+      "killed": 0,
+      "survived": 5,
+      "no_applicable_specs": 0,
+      "score": 0
+    },
+    {
+      "operator": "duplicate_tool_call",
+      "generated": 5,
+      "killed": 0,
+      "survived": 5,
+      "no_applicable_specs": 0,
+      "score": 0
+    },
+    {
+      "operator": "reorder_tool_calls",
+      "generated": 2,
+      "killed": 0,
+      "survived": 2,
+      "no_applicable_specs": 0,
+      "score": 0
+    },
+    {
+      "operator": "perturb_argument",
+      "generated": 11,
+      "killed": 0,
+      "survived": 11,
+      "no_applicable_specs": 0,
+      "score": 0
+    },
+    {
+      "operator": "inject_tool_error",
+      "generated": 5,
+      "killed": 0,
+      "survived": 5,
+      "no_applicable_specs": 0,
+      "score": 0
+    },
+    {
+      "operator": "alter_world_effect",
+      "generated": 21,
+      "killed": 11,
+      "survived": 10,
+      "no_applicable_specs": 0,
+      "score": 0.5238095238095238
+    }
+  ],
+  "excluded": {
+    "skipped_specs": [],
+    "mutants_no_applicable_specs": 0
+  }
+}

@@ -274,7 +274,7 @@
       "key": {
         "model": "refund-desk-scripted",
         "params": {},
-        "prompt_hash": "sha256:d2991aaa81c84a3b88045466854015d9dba4703d43976dcab1b5f88cd7e9d169",
+        "prompt_hash": "sha256:d0e10ae443984756d13df56031a84ff825890b8ffda5d676553caa8c62c72cc4",
         "tool_schema_hash": "sha256:2be373ea77774557cdb0af52e2f5fd811338c350cbe6df524b59afd4b9476cf7"
       },
       "method": "POST",
@@ -305,7 +305,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"{{email_1}}\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_1"
           }
@@ -418,8 +418,8 @@
           "object": "chat.completion",
           "usage": {
             "completion_tokens": 43,
-            "prompt_tokens": 255,
-            "total_tokens": 298
+            "prompt_tokens": 267,
+            "total_tokens": 310
           }
         },
         "content_type": "application/json",
@@ -433,7 +433,7 @@
       "key": {
         "model": "refund-desk-scripted",
         "params": {},
-        "prompt_hash": "sha256:80435abfa6b27aa645b48ebc90829a84f082db87d43b95b968b880b9b2335e66",
+        "prompt_hash": "sha256:421ce3810f00ca6c5b80795a877787452daa4154abf1c06592fcb28327d9aea8",
         "tool_schema_hash": "sha256:2be373ea77774557cdb0af52e2f5fd811338c350cbe6df524b59afd4b9476cf7"
       },
       "method": "POST",
@@ -464,7 +464,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"{{email_1}}\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_1"
           },
@@ -483,7 +483,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_email\":\"{{email_2}}\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_2"
           }
@@ -596,8 +596,8 @@
           "object": "chat.completion",
           "usage": {
             "completion_tokens": 57,
-            "prompt_tokens": 343,
-            "total_tokens": 400
+            "prompt_tokens": 369,
+            "total_tokens": 426
           }
         },
         "content_type": "application/json",
@@ -611,7 +611,7 @@
       "key": {
         "model": "refund-desk-scripted",
         "params": {},
-        "prompt_hash": "sha256:796c62b38daa864ead1523eef0a24a12cb0cfa42fb56c752656b909ae661a18c",
+        "prompt_hash": "sha256:210f6c53de852ddef6a8b2eed251163068f333423edd389f0256e4fbb5d210c1",
         "tool_schema_hash": "sha256:2be373ea77774557cdb0af52e2f5fd811338c350cbe6df524b59afd4b9476cf7"
       },
       "method": "POST",
@@ -642,7 +642,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"{{email_1}}\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_1"
           },
@@ -661,7 +661,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_email\":\"{{email_2}}\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_2"
           },
@@ -793,8 +793,8 @@
           "object": "chat.completion",
           "usage": {
             "completion_tokens": 58,
-            "prompt_tokens": 439,
-            "total_tokens": 497
+            "prompt_tokens": 464,
+            "total_tokens": 522
           }
         },
         "content_type": "application/json",
@@ -808,7 +808,7 @@
       "key": {
         "model": "refund-desk-scripted",
         "params": {},
-        "prompt_hash": "sha256:d86601f5b731f2b7a75d9258a417ad0b15a85e67d9a96cb12eda0122093e1dfb",
+        "prompt_hash": "sha256:d316b3890cec236ed59b434c168fecd4e45e6b0c42ee5b2adb206a23925d243c",
         "tool_schema_hash": "sha256:2be373ea77774557cdb0af52e2f5fd811338c350cbe6df524b59afd4b9476cf7"
       },
       "method": "POST",
@@ -839,7 +839,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"{{email_1}}\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_1"
           },
@@ -858,7 +858,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_email\":\"{{email_2}}\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_2"
           },
@@ -1009,8 +1009,8 @@
           "object": "chat.completion",
           "usage": {
             "completion_tokens": 70,
-            "prompt_tokens": 544,
-            "total_tokens": 614
+            "prompt_tokens": 570,
+            "total_tokens": 640
           }
         },
         "content_type": "application/json",
@@ -1024,7 +1024,7 @@
       "key": {
         "model": "refund-desk-scripted",
         "params": {},
-        "prompt_hash": "sha256:6206a6c5bf78b165dd2626d48a7e02e42c32c869cbda349d79b7193646f45de5",
+        "prompt_hash": "sha256:ca7f0726d503bae48650eca9d655ef1c98fc0c7fc4c1f54a1d344821c16c5246",
         "tool_schema_hash": "sha256:2be373ea77774557cdb0af52e2f5fd811338c350cbe6df524b59afd4b9476cf7"
       },
       "method": "POST",
@@ -1055,7 +1055,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":8400,\"currency\":\"USD\",\"customer_email\":\"{{email_1}}\",\"customer_id\":\"C-0311\",\"order_id\":\"O-1042\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_1"
           },
@@ -1074,7 +1074,7 @@
             ]
           },
           {
-            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
+            "content": "{\"amount_cents\":12600,\"currency\":\"USD\",\"customer_email\":\"{{email_2}}\",\"customer_id\":\"C-0744\",\"order_id\":\"O-2077\",\"status\":\"delivered\"}",
             "role": "tool",
             "tool_call_id": "call_2"
           },
@@ -1131,7 +1131,7 @@
             ]
           },
           {
-            "content": "{\"notification_id\":\"N-0001\",\"status\":\"sent\"}",
+            "content": "{\"customer_email\":\"{{email_2}}\",\"notification_id\":\"N-0001\",\"status\":\"sent\"}",
             "role": "tool",
             "tool_call_id": "call_5"
           }
@@ -1234,8 +1234,8 @@
           "object": "chat.completion",
           "usage": {
             "completion_tokens": 20,
-            "prompt_tokens": 642,
-            "total_tokens": 662
+            "prompt_tokens": 680,
+            "total_tokens": 700
           }
         },
         "content_type": "application/json",
@@ -1276,7 +1276,7 @@
     "metadata": {
       "latency_ms": 0,
       "model": "refund-desk-scripted",
-      "total_tokens": 2681
+      "total_tokens": 2808
     },
     "output": {
       "message": ""
@@ -1319,6 +1319,7 @@
         "result": {
           "amount_cents": 8400,
           "currency": "USD",
+          "customer_email": "{{email_1}}",
           "customer_id": "C-0311",
           "order_id": "O-1042",
           "status": "delivered"
@@ -1343,7 +1344,7 @@
           "finish_reasons": [
             "tool_calls"
           ],
-          "input_tokens": 255,
+          "input_tokens": 267,
           "model": "refund-desk-scripted",
           "output_tokens": 43
         },
@@ -1364,6 +1365,7 @@
         "result": {
           "amount_cents": 12600,
           "currency": "USD",
+          "customer_email": "{{email_2}}",
           "customer_id": "C-0744",
           "order_id": "O-2077",
           "status": "delivered"
@@ -1388,7 +1390,7 @@
           "finish_reasons": [
             "tool_calls"
           ],
-          "input_tokens": 343,
+          "input_tokens": 369,
           "model": "refund-desk-scripted",
           "output_tokens": 57
         },
@@ -1434,7 +1436,7 @@
           "finish_reasons": [
             "tool_calls"
           ],
-          "input_tokens": 439,
+          "input_tokens": 464,
           "model": "refund-desk-scripted",
           "output_tokens": 58
         },
@@ -1481,7 +1483,7 @@
           "finish_reasons": [
             "tool_calls"
           ],
-          "input_tokens": 544,
+          "input_tokens": 570,
           "model": "refund-desk-scripted",
           "output_tokens": 70
         },
@@ -1502,6 +1504,7 @@
         "name": "notify_customer",
         "parent_span_id": "0000000000000001",
         "result": {
+          "customer_email": "{{email_2}}",
           "notification_id": "N-0001",
           "status": "sent"
         },
@@ -1525,7 +1528,7 @@
           "finish_reasons": [
             "stop"
           ],
-          "input_tokens": 642,
+          "input_tokens": 680,
           "model": "refund-desk-scripted",
           "output_tokens": 20
         },
@@ -1613,7 +1616,7 @@
     "verified": true
   },
   "world": {
-    "definition_sha256": "eeaaa2e5c1f03c6ebdd2ebead139bf938793b100be2eed5f6dac61f0bac01b99",
+    "definition_sha256": "cd86858f4e6adab6184d9c2d405e34344df250806ccd0b173f84a5c8591aa907",
     "faults_fired": [],
     "faults_fired_count": 0,
     "state": {
@@ -1630,6 +1633,7 @@
         {
           "amount_cents": 8400,
           "currency": "USD",
+          "customer_email": "{{email_1}}",
           "customer_id": "C-0311",
           "item": "Ceramic pour-over set (synthetic)",
           "order_id": "O-1042",
@@ -1638,6 +1642,7 @@
         {
           "amount_cents": 2650,
           "currency": "USD",
+          "customer_email": "{{email_3}}",
           "customer_id": "C-0520",
           "item": "Linen apron (synthetic)",
           "order_id": "O-2001",
@@ -1646,6 +1651,7 @@
         {
           "amount_cents": 12600,
           "currency": "USD",
+          "customer_email": "{{email_2}}",
           "customer_id": "C-0744",
           "item": "Walnut serving board (synthetic)",
           "order_id": "O-2077",

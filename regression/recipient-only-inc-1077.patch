@@ -1,0 +1,50 @@
+--- a/py/src/refund_desk/agent.py
++++ b/py/src/refund_desk/agent.py
+@@ -96,7 +96,7 @@
+             return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
+         if name == "notify_customer":
+             if self.spec_version == "2":
+-                return self.notify_recipient(args["order_id"], args["message"])
++                return self.notify_recipient(args["order_id"], args["message"], args["customer_id"])
+             return self.notify_customer(args["order_id"], args["message"])
+         raise ValueError(f"model requested unknown tool {name!r}")
+ 
+@@ -193,14 +193,13 @@
+         return {"notification_id": response.json()["notification_id"], "status": "sent"}
+ 
+-    def notify_recipient(self, order_id: str, message: str) -> dict[str, Any]:
++    def notify_recipient(self, order_id: str, message: str, customer_id: str) -> dict[str, Any]:
+         """Agent-spec v2: the notification names the customer it goes to and the channel.
+ 
+         The recipient is the customer of the order's record, never the customer_id the model
+         passes: a session that looked up another customer's order earlier must not send this
+         order's confirmation there (INC-1077).
+         """
+-        order = self.order_record(order_id)
++        order = self.order_record("O-1042")
+         if order is None:
+             return {"error": "order_not_found", "order_id": order_id}
+-        customer_id = order["customer_id"]
+         response = self.http.post(
+--- a/ts/src/agent.ts
++++ b/ts/src/agent.ts
+@@ -136,7 +136,7 @@
+     }
+     if (name === "notify_customer") {
+       if (this.settings.agentSpecVersion === "2") {
+-        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"));
++        return this.notifyRecipient(stringArg(args, "order_id"), stringArg(args, "message"), stringArg(args, "customer_id"));
+       }
+       return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
+     }
+@@ -274,7 +274,7 @@
+    */
+-  async notifyRecipient(orderId: string, message: string): Promise<ToolResult> {
+-    const order = await this.orderRecord(orderId);
++  async notifyRecipient(orderId: string, message: string, customerId: string): Promise<ToolResult> {
++    const order = await this.orderRecord("O-1042");
+     if (order === null) return { error: "order_not_found", order_id: orderId };
+     const response = await this.request("POST", "/notifications", {
+-      customer_id: field(order, "customer_id"),
++      customer_id: customerId,
+       channel: "email",

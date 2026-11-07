@@ -313,7 +313,9 @@ def report_failure(name: str, failure: ActError) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", choices=["released", "edge"], required=True)
-    channel = parser.parse_args().channel
+    parser.add_argument("--incident", choices=["1042", "1077", "all"], default="1042")
+    options = parser.parse_args()
+    channel = options.channel
 
     if LOGS.exists():
         shutil.rmtree(LOGS)
@@ -331,9 +333,32 @@ def main() -> int:
         ("Act 6", walkthrough.act_viewer),
         ("Act 7", walkthrough.act_outage),
     ]
-    print(f"walkthrough on the {channel} channel (logs in {LOGS.relative_to(ROOT)}/)", flush=True)
+    walkthroughs = [walkthrough]
+    if options.incident in ("1077", "all"):
+        sys.modules.setdefault("walkthrough", sys.modules[__name__])
+        from walkthrough_1077 import Incident1077
+
+        second = Incident1077(channel)
+        walkthroughs.append(second)
+        second_acts = [
+            ("INC-1077 Act 1", second.act_partial_refund),
+            ("INC-1077 Act 2", second.act_relational_capture),
+            ("INC-1077 Act 3", second.act_recipient_replay),
+            ("INC-1077 Act 4", second.act_fix_and_gates),
+            ("INC-1077 Act 5", second.act_agent_contract),
+            ("INC-1077 Act 6", second.act_drift),
+        ]
+        acts = [*acts, *second_acts] if options.incident == "all" else second_acts
+    print(
+        f"walkthrough INC-{options.incident} on the {channel} channel "
+        f"(logs in {LOGS.relative_to(ROOT)}/)",
+        flush=True,
+    )
     try:
         for name, act in acts:
+            last_step = max(runner.step for runner in walkthroughs)
+            for runner in walkthroughs:
+                runner.step = last_step
             try:
                 print(f"{name}: {act()} ✓", flush=True)
             except (OSError, ValueError, KeyError) as error:
@@ -342,7 +367,8 @@ def main() -> int:
             except ActError as failure:
                 return report_failure(name, failure)
     finally:
-        walkthrough.cleanup()
+        for runner in walkthroughs:
+            runner.cleanup()
     print("walkthrough: every act ended as expected")
     return 0
 

@@ -181,6 +181,9 @@ export class Tools {
       status: field(order, "status"),
     };
     if (this.settings.agentSpecVersion === "2") result.customer_id = field(order, "customer_id");
+    if (this.settings.agentSpecVersion === "2" && order.customer_email !== undefined) {
+      result.customer_email = order.customer_email;
+    }
     return result;
   }
 
@@ -279,7 +282,9 @@ export class Tools {
       message,
     });
     const body = await Tools.json(response);
-    return { notification_id: field(body, "notification_id"), status: "sent" };
+    const result: ToolResult = { notification_id: field(body, "notification_id"), status: "sent" };
+    if (order.customer_email !== undefined) result.customer_email = order.customer_email;
+    return result;
   }
 }
 

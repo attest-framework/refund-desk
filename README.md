@@ -24,7 +24,7 @@ make setup walkthrough
 `make walkthrough` runs every act below in order on the released attest (`CHANNEL=released`, the default; `make walkthrough CHANNEL=edge` runs attest from source, see [Channels](#channels)), checks the outcome each act promises and prints one line per act. A wrong outcome prints the act, the expected and the actual result and exits 1; every command's log is kept in `reports/walkthrough/`. It takes about two minutes. The unfixed agent comes from a temporary copy of this tree with [`regression/revert-inc-1042-fix.patch`](regression/revert-inc-1042-fix.patch) applied (the change of the regression pull requests [#12](https://github.com/attest-framework/refund-desk/pull/12) and [#22](https://github.com/attest-framework/refund-desk/pull/22)) and with the fixtures recorded before the fix restored from [`regression/pre-fix-fixtures/`](regression/pre-fix-fixtures/), so the working tree is never modified.
 
 ```text
-walkthrough on the released channel (logs in reports/walkthrough/)
+walkthrough INC-1042 on the released channel (logs in reports/walkthrough/)
 Act 1: output-only tests pass; both incident traces show 2 refunds ✓
 Act 2: trace check passes; the contract reports issue_refund called 2× ✓
 Act 3a: capture verifies INC-1042: byte-identical, 0 planted secrets, tests pass ✓
@@ -287,6 +287,59 @@ make outage
 - the same report under `attest.policy.yaml` minus `block_on_regression` (`reports/attest.policy.no-baseline.yaml`; the rule needs `--baseline`, and `attest policy evaluate` exits 3 without it) exits 1, which is why the two policies differ.
 
 Reports are written to `reports/outage/`. It runs on both channels and is the last step of `make check`. The plan's story places the outage after the regression; the demo numbers it last (Act 7) so the existing Act 5 and Act 6 names stay.
+
+## INC-1077: partial refunds and the wrong customer
+
+The second [synthetic incident, issue #34](https://github.com/attest-framework/refund-desk/issues/34),
+starts after agent-spec v2 enables partial refunds. For O-2077 ($126.00, customer C-0744), the
+model asks for a $12.00 shipping refund and then $126.00 for the whole order. Before
+[the fix, PR #35](https://github.com/attest-framework/refund-desk/pull/35), the agent committed
+$138.00 and notified C-0311, whose order it had looked up earlier. A maximum of two refunds
+does not catch an over-refund, and replaying a recorded recipient is not a recipient contract.
+
+```bash
+make edge-artifacts ATTEST_SRC=<attest checkout>
+make setup CHANNEL=edge
+make walkthrough INCIDENT=1077 CHANNEL=edge
+make walkthrough INCIDENT=all CHANNEL=edge  # both stories
+```
+
+`INCIDENT=1042` remains the default for both `make walkthrough` and `make incident`.
+INC-1077 currently needs edge; the pinned released rc.3 lacks its relational contracts.
+The existing INC-1042 acts and frozen evidence are retained. The walkthrough uses temporary
+copies for regressions, never modifies the working agent, and never runs a coding agent or
+calls a paid provider. Each command's evidence is in `reports/walkthrough/`.
+
+| Act | Checked outcome |
+|---|---|
+| **1 — the old suite stays green** | The INC-1042 pytest suite runs with `-n auto` and the Vitest suite runs in its pool, both writing reports. INC-1042 keeps cardinality **1**; INC-1077 allows **2**. Both unfixed agents show R-0001 **$12.00** + R-0002 **$126.00** in the incident ledger. |
+| **2 — capture relates effects to orders** | Real `attest capture --expect-fail` output in both languages: `effect violated: refunds amount_cents sum 13800 for O-2077 exceeds orders.amount_cents 12600`. Capture also drafts `matches` for the wrong customer. |
+| **3 — recipient identity changes** | With the cap still fixed, a recipient-only regression sends the confirmation to the earlier customer's contact. Python and TS strict replay miss at the final model request, with **zero live calls**. The engine's actual line is `replay miss: messages changed (hash …→…)`, not a role-naming diagnostic. The changed role is the notified email: C-0744's contact becomes C-0311's. |
+| **4 — fix and gates** | The fixed real agents replay with `0 live model calls · $0.00`. [PR A #36](https://github.com/attest-framework/refund-desk/pull/36) brings back the bug; [PR B #37](https://github.com/attest-framework/refund-desk/pull/37) removes the sum contract. Their blocked checks and annotations are linked on those PRs. The first demonstration exposed two gate gaps, corrected by [#40](https://github.com/attest-framework/refund-desk/pull/40) (reported contracts) and [#38](https://github.com/attest-framework/refund-desk/pull/38) (main baseline in annotate). |
+| **5 — recorded coding-agent contract** | The [committed transcript](incidents/INC-1077/act5/transcript.stream.jsonl) shows MCP drafting and executing `sum` and `matches`: the incident fails, the fixed capture passes. The walkthrough rechecks both offline and regenerates the [per-operator mutation report and survivor explanation](incidents/INC-1077/act5/README.md): **11/49 killed**, with trace-only mutations outside these two effect invariants. |
+| **6 — drift reaches an operator** | Ten healthy scripted judge replies establish the dynamic baseline; the server's drift mode lowers “states the refunded amount” to **0.3**. `ContinuousEvalRunner` posts exactly **one** alert to a local stdlib webhook receiver. The checked line starts `drift: 1 webhook alert: status=hard_fail score=0.3`. |
+
+Both regression demonstrations are **closed unmerged**, with their branches retained:
+
+- **PR A:** [`required` failed](https://github.com/attest-framework/refund-desk/actions/runs/42313069042);
+  the [policy summary](https://github.com/attest-framework/refund-desk/pull/36#issuecomment-6694144422)
+  identifies both `sum` and `matches` regressions in Python and TS, with the two effect violations annotated.
+- **PR B:** [`required` failed](https://github.com/attest-framework/refund-desk/actions/runs/42313067944)
+  even though all live/replay tests passed; the
+  [policy summary](https://github.com/attest-framework/refund-desk/pull/37#issuecomment-6693826501)
+  names the removed sum assertion ids in all four baselines. Its annotations say
+  `Attest policy reported a blocking violation`.
+
+Customer contact emails are present **only** in the INC-1077 world and its v2 lookup/notification
+tool results. The INC-1042 world, fixtures, and frozen traces are unchanged; `make capture-check`
+proves its captures remain byte-identical. The new fixed INC-1077 captures and span-structure
+snapshot are deliberately re-recorded with synthetic, templated contacts. The original incident
+fixtures and traces remain frozen. Strict replay now detects the recipient's email-role change,
+but its diagnostic reports only the changed `messages` component; the relational `matches`
+contract independently checks the actual world recipient.
+
+Act 5's recording needed `USER` and `LOGNAME` in addition to `HOME` and `PATH` under `env -i`
+for macOS keychain login. See its [reproduction instructions](incidents/INC-1077/act5/README.md).
 
 
 ## Run it

@@ -18,18 +18,21 @@ resources:
     seed:
       - order_id: O-1042
         customer_id: C-0311
+        customer_email: alex.synthetic@example.com
         item: Ceramic pour-over set (synthetic)
         amount_cents: 8400
         currency: USD
         status: delivered
       - order_id: O-2001
         customer_id: C-0520
+        customer_email: sam.synthetic@example.com
         item: Linen apron (synthetic)
         amount_cents: 2650
         currency: USD
         status: delivered
       - order_id: O-2077
         customer_id: C-0744
+        customer_email: robin.synthetic@example.com
         item: Walnut serving board (synthetic)
         amount_cents: 12600
         currency: USD

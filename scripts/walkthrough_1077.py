@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from walkthrough import NOT_COPIED, ROOT, ZERO_COST, ActError, Walkthrough
+from walkthrough import NOT_COPIED, ROOT, ZERO_COST, ActError, Walkthrough, replay_cost
 
 OVER_REFUND = (
     "effect violated: refunds amount_cents sum 13800 for O-2077 exceeds orders.amount_cents 12600"
@@ -133,7 +133,7 @@ class Incident1077(Walkthrough):
         for language in ("py", "ts"):
             replay = self.make(f"replay-run-{language}", root=copy)
             misses = re.findall(r"replay miss: messages changed \(hash [^)]+\)", replay.output)
-            if replay.code == 0 or not misses or ZERO_COST not in replay.output:
+            if replay.code == 0 or not misses:
                 raise ActError(
                     "recipient-only strict replay miss with zero live calls", replay.output
                 )
@@ -143,12 +143,13 @@ class Incident1077(Walkthrough):
             counters = report["summary"]["replay"]
             if counters["live"] != 0 or counters["misses"] != 1:
                 raise ActError("one strict miss and zero live calls", repr(counters))
+            replay_cost([copy / "reports" / f"attest-report.replay.{language}.json"])
             lines.append(f"{language}: {misses[0]}")
         return "; ".join(lines) + "; changed recipient identity C-0744 → C-0311 (email role)"
 
     def act_fix_and_gates(self) -> str:
         replay = self.make("replay-tests")
-        if replay.code or ZERO_COST not in replay.output:
+        if replay.code:
             raise ActError("fixed replay passes with " + ZERO_COST, replay.output)
         for language in ("py", "ts"):
             report = json.loads(
@@ -157,7 +158,13 @@ class Incident1077(Walkthrough):
             counters = report["summary"]["replay"]
             if counters["live"] != 0 or counters["misses"] != 0:
                 raise ActError("fixed replay has no live calls or misses", repr(counters))
-        return f"{ZERO_COST}; fix PR #35; blocked regression PR A {PR_A}; removal PR B {PR_B}"
+        cost = replay_cost(
+            [
+                ROOT / "reports" / f"attest-report.replay.{language}.json"
+                for language in ("py", "ts")
+            ]
+        )
+        return f"{cost}; fix PR #35; blocked regression PR A {PR_A}; removal PR B {PR_B}"
 
     def act_agent_contract(self) -> str:
         tests = self.run(

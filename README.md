@@ -309,6 +309,11 @@ Both channels run INC-1077: the pinned released rc.5 includes its relational con
 The existing INC-1042 acts and frozen evidence are retained. The walkthrough uses temporary
 copies for regressions, never modifies the working agent, and never runs a coding agent or
 calls a paid provider. Each command's evidence is in `reports/walkthrough/`.
+The zero-cost checks read report-v2's `summary.replay` counters (`live`, `live_cost_usd`,
+and `unpriced_live_calls`) for both languages, not pytest's terminal summary. This also
+works with `PYTEST_XDIST='-n auto'`, where attest rc.5 omits the terminal replay line.
+Any live call, nonzero cost, or unpriced live call fails the act.
+
 
 INC-1077 Acts 1–2 apply the combined `regression/revert-inc-1077-fix.patch`;
 Act 3 applies `regression/recipient-only-inc-1077.patch` with the refund cap intact.

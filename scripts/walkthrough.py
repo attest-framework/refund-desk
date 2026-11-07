@@ -58,6 +58,23 @@ class ActError(Exception):
         self.actual = actual
 
 
+def replay_cost(reports: list[Path]) -> str:
+    """Read replay accounting from report-v2, independent of terminal reporters."""
+    live = 0
+    cost = 0.0
+    for path in reports:
+        counters = json.loads(path.read_text())["summary"]["replay"]
+        if (
+            counters["live"] != 0
+            or counters["live_cost_usd"] != 0
+            or counters["unpriced_live_calls"] != 0
+        ):
+            raise ActError("zero live calls and zero fully priced cost", repr(counters))
+        live += counters["live"]
+        cost += counters["live_cost_usd"]
+    return f"{live} live model calls · ${cost:.2f}"
+
+
 @dataclass
 class Run:
     code: int
@@ -207,9 +224,10 @@ class Walkthrough:
             raise ActError(expected, f"the replay tests exited {replay.code}")
         reports = [ROOT / "reports" / name for name in (*LIVE_REPORTS, *REPLAY_REPORTS)]
         summary = self.report_summary_markdown(reports)
-        if ZERO_COST not in summary or " 0 failed" not in summary:
+        cost = replay_cost([ROOT / "reports" / name for name in REPLAY_REPORTS])
+        if " 0 failed" not in summary:
             raise ActError(expected, f"summary: {summary.strip()!r}")
-        return f"the fix passes: 0 failed, {ZERO_COST}"
+        return f"the fix passes: 0 failed, {cost}"
 
     def act_regression(self) -> str:
         expected = f"the regression fails with '{DUPLICATE}' and the policy exits 1"

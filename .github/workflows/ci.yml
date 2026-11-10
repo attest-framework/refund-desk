@@ -1,4 +1,4 @@
-# Demo channels (contract C6; attest 1.1.0-rc.5 released, attest main edge):
+# Demo channels (contract C6; attest 1.1.0 released, attest main edge):
 #   edge      this commit against attest `main`, built by setup-attest
 #   released  the latest verified-<version> tag against its published packages
 # No job calls a paid model: the scripted model server answers the agent and the
@@ -45,7 +45,7 @@ jobs:
 
       - name: Build attest main
         id: attest
-        uses: attest-framework/attest/.github/actions/setup-attest@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/setup-attest@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         with:
           ref: main
 
@@ -231,7 +231,7 @@ jobs:
 
       - name: Build attest main
         id: attest
-        uses: attest-framework/attest/.github/actions/setup-attest@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/setup-attest@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         # setup-attest has no cache switch. Scope Go's module/build caches to a private
         # random directory created after edge finishes, separate from its cache paths.
         # The action may still contact the cache service; it cannot disable caching.
@@ -381,7 +381,7 @@ jobs:
       - name: Annotate Python live report
         id: live-py
         continue-on-error: true
-        uses: attest-framework/attest/.github/actions/pr-annotate@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/pr-annotate@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         env:
           ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
         with:
@@ -408,7 +408,7 @@ jobs:
       - name: Annotate TypeScript live report
         id: live-ts
         continue-on-error: true
-        uses: attest-framework/attest/.github/actions/pr-annotate@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/pr-annotate@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         env:
           ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
         with:
@@ -435,7 +435,7 @@ jobs:
       - name: Annotate Python replay report
         id: replay-py
         continue-on-error: true
-        uses: attest-framework/attest/.github/actions/pr-annotate@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/pr-annotate@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         env:
           ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
         with:
@@ -462,7 +462,7 @@ jobs:
       - name: Annotate TypeScript replay report
         id: replay-ts
         continue-on-error: true
-        uses: attest-framework/attest/.github/actions/pr-annotate@18aeebeacf9bde5270ba7228b5290c8999b29c90 # v1.1.0-rc.5
+        uses: attest-framework/attest/.github/actions/pr-annotate@101de1cdd703b04abf5fd854f347565fd37715b8 # v1.1.0
         env:
           ATTEST_CACHE_DIR: ${{ runner.temp }}/annotate-cache
         with:

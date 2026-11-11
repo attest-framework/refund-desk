@@ -32,7 +32,7 @@ Both agents (`py/src/refund_desk/agent.py`, `ts/src/agent.ts`) now:
 - run the read, cap and commit of a refund as one step per order (a `threading.Lock` per order in Python, a per-order promise chain in TypeScript), so two concurrent refunds of one order cannot both fit the same remaining balance. The guarantee covers callers within one agent process; the payments API has no aggregate constraint, so separate processes would need a ledger-side constraint, which is out of scope for this demo.
 - send the confirmation to the customer on the order's record, ignoring the `customer_id` the model passes.
 
-The scripted model server is unchanged, so the same session now leaves (`make incident-1077 CHANNEL=edge`):
+The scripted model server is unchanged, so the same session now leaves (`make setup` followed by `make incident-1077`, using released attest 1.1.0 by default):
 
 ```text
   refund   order      amount  idempotency key

@@ -4,6 +4,10 @@
 
 Refund Desk is a small customer-support agent, written in Python and TypeScript, that looks up orders, issues refunds and notifies customers. It runs against a scripted OpenAI-compatible model server and a payments API that is an [attest world](https://github.com/attest-framework/attest/blob/main/docs/guides/world-fixtures.md), so every run is free and reproducible.
 
+Run `make setup walkthrough` to watch a double refund escape output-only tests, then see attest catch it, verify the fix and block a regression. The walkthrough prints a checked result for each act and keeps the evidence in `reports/walkthrough/`. No API key is needed.
+
+**On this page:** [Walkthrough: INC-1042](#from-incident-to-regression-test) · [INC-1077: partial refunds](#inc-1077-partial-refunds-and-the-wrong-customer) · [Run it](#run-it) · [Channels](#channels) · [Trace doctor](#trace-doctor) · [Flaky model and budgets](#flaky-model-statistical-verdicts-and-a-judge-budget)
+
 ## Role of this repository
 
 | Repo | Role | Tracks |
@@ -22,6 +26,8 @@ make setup walkthrough
 ```
 
 `make walkthrough` runs every act below in order on the released attest (`CHANNEL=released`, the default; `make walkthrough CHANNEL=edge` runs attest from source, see [Channels](#channels)), checks the outcome each act promises and prints one line per act. A wrong outcome prints the act, the expected and the actual result and exits 1; every command's log is kept in `reports/walkthrough/`. It takes about two minutes. The unfixed agent comes from a temporary copy of this tree with [`regression/revert-inc-1042-fix.patch`](regression/revert-inc-1042-fix.patch) applied (the change of the regression pull requests [#12](https://github.com/attest-framework/refund-desk/pull/12) and [#22](https://github.com/attest-framework/refund-desk/pull/22)) and with the fixtures recorded before the fix restored from [`regression/pre-fix-fixtures/`](regression/pre-fix-fixtures/), so the working tree is never modified.
+
+The following recorded INC-1042 output illustrates the act sequence. Test counts, mutation scores and source line numbers can change as contracts are added; the scripts check the outcomes rather than these incidental values.
 
 ```text
 walkthrough INC-1042 on the released channel (logs in reports/walkthrough/)
@@ -168,8 +174,8 @@ make replay-miss CHANNEL=edge      # the miss message, below
 `make check` runs both replay tests with strict replay and the egress guard on, with no provider key in the environment (the agent's settings need a non-empty `OPENAI_API_KEY`, so the run sets the placeholder `replay-needs-no-key`):
 
 ```bash
-pytest tests/replay --attest-replay=strict --attest-egress=block
-ATTEST_REPLAY=strict ATTEST_EGRESS=block vitest run --config tests/replay/vitest.config.ts
+(cd py && uv run --no-sync pytest tests/replay --attest-replay=strict --attest-egress=block)
+(cd ts && ATTEST_REPLAY=strict ATTEST_EGRESS=block pnpm exec vitest run --config tests/replay/vitest.config.ts)
 ```
 
 ```text
@@ -298,20 +304,19 @@ $138.00 and notified C-0311, whose order it had looked up earlier. A maximum of 
 does not catch an over-refund, and replaying a recorded recipient is not a recipient contract.
 
 ```bash
-make edge-artifacts ATTEST_SRC=<attest checkout>
-make setup CHANNEL=edge
-make walkthrough INCIDENT=1077 CHANNEL=edge
-make walkthrough INCIDENT=all CHANNEL=edge  # both stories
+make setup
+make walkthrough INCIDENT=1077
+make walkthrough INCIDENT=all  # both stories on released attest 1.1.0
 ```
 
 `INCIDENT=1042` remains the default for both `make walkthrough` and `make incident`.
-Both channels run INC-1077: the pinned released rc.5 includes its relational contracts.
+Both channels run INC-1077: the pinned released 1.1.0 includes its relational contracts.
 The existing INC-1042 acts and frozen evidence are retained. The walkthrough uses temporary
 copies for regressions, never modifies the working agent, and never runs a coding agent or
 calls a paid provider. Each command's evidence is in `reports/walkthrough/`.
 The zero-cost checks read report-v2's `summary.replay` counters (`live`, `live_cost_usd`,
 and `unpriced_live_calls`) for both languages, not pytest's terminal summary. This also
-works with `PYTEST_XDIST='-n auto'`, where attest rc.5 omits the terminal replay line.
+works with `PYTEST_XDIST='-n auto'`, where the terminal replay line can be absent (as observed with attest 1.1.0-rc.5).
 Any live call, nonzero cost, or unpriced live call fails the act.
 
 
@@ -354,13 +359,12 @@ for macOS keychain login. See its [reproduction instructions](incidents/INC-1077
 
 ## Run it
 
-Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.io/). No API key.
+Requires [uv](https://docs.astral.sh/uv/), Node.js 22+ and [pnpm](https://pnpm.io/installation) (the repository pins pnpm 10.33.3 in `ts/package.json`). If you use Corepack to provide pnpm, enable it before setup; otherwise install pnpm using its installation guide. No API key is needed. `uv` provisions Python 3.12 for the helper scripts. Edge builds additionally need the Go toolchain required by your attest checkout.
 
 ```bash
-make edge-artifacts ATTEST_SRC=<attest checkout>   # build attest from source (edge builds attest from a checkout)
-make setup CHANNEL=edge      # uv sync (py/) and pnpm install (ts/), with attest from source
-make incident CHANNEL=edge   # run the incident request in Python and TypeScript, print the payments ledger, require one refund
-make check CHANNEL=edge      # lint, type-check and run the attest tests in both languages
+make setup       # uv sync (py/) and pnpm install (ts/), pinned attest 1.1.0
+make incident    # run the fixed INC-1042 agents and require one refund
+make check       # lint, type-check and run the attest tests in both languages
 ```
 
 `attest.policy.yaml` sets `block_on_regression`, which needs a baseline. `make check BASELINE_DIR=<dir>` (the four `attest-report*.json` of an earlier green `main` run) pins them as `main-py`, `main-ts`, `main-replay-py` and `main-replay-ts` and evaluates the live and replay reports with `--baseline`; without `BASELINE_DIR` it evaluates the policy minus that rule and says so. `PYTEST_XDIST="-n auto"` runs the Python suites in parallel (Vitest stays serial: the tests share one payments URL).
@@ -371,8 +375,7 @@ and its fixed-agent strict replay writes to `attest-report.replay.{py,ts}.json`.
 and contract spec: deleting a contract is a baseline removal, and a failing contract blocks policy.
 The current-agent tests use the scripted server, so a code regression is reported even if it
 also causes strict replay to miss. Frozen incident `inspect()` reproductions stay outside these
-reports because they assert known violations. The released rc.5 channel runs every INC-1077
-test, including the relational contracts.
+reports because they assert known violations. The released 1.1.0 channel runs every INC-1077 test, including the relational contracts.
 
 | Path | What it is |
 |---|---|
@@ -382,8 +385,8 @@ test, including the relational contracts.
 | `world/` | The payments API as attest worlds (`world.yaml`): `payments.world.yaml` is healthy, `payments-inc-1042.world.yaml` adds the INC-1042 fault. Every run, test and capture hosts a fresh one. A world does not validate refunds: any order id and amount commit, so the agents' 404/422 branches in `issue_refund` are no longer reached |
 | `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
 | `incidents/INC-1042/` | The incident as it shipped, frozen: the request, both OTLP/JSON traces of the double-refund agent, their span structure and a corrected trace with one refund |
-| `py/tests/attest/`, `ts/tests/attest/` | The captured INC-1042 fixture and its drafted reproduction test per language (Act 3a) |
-| `py/tests/replay/`, `ts/tests/replay/` | The INC-1042 replay tests: today's agent against the captured fixture (Act 3b) |
+| `py/tests/attest/`, `ts/tests/attest/` | Captured fixtures and contracts for both incidents, including INC-1077's relational contracts |
+| `py/tests/replay/`, `ts/tests/replay/` | Today's agents against both incidents' captured fixtures in strict replay |
 | `mutation.policy.yaml`, `scripts/mutation_report.py` | The Act 5 mutation-score gate and the before/after report that `make mutate` prints (Act 5) |
 | `scripts/verdict_parity.py`, `parity-allowlist.json` | The Act 6 check that the py and ts suites return the same verdict for every contract (`make check-parity`) |
 | `scripts/span-structure.txt` | The span structure of the current agent's incident run, which `make incident` compares against |
@@ -397,19 +400,19 @@ attest is installed from one of two channels:
 
 | Channel | attest | Runs in CI |
 |---|---|---|
-| `CHANNEL=released` (default) | The published packages pinned in `py/uv.lock` and `ts/package.json` | On the latest `verified-<version>` tag, and nightly (05:17 UTC) and on manual dispatch as `make walkthrough CHANNEL=released` |
+| `CHANNEL=released` (default) | attest 1.1.0, pinned in `py/uv.lock`, `ts/package.json` and `ts/pnpm-lock.yaml` | On the latest `verified-<version>` tag (currently `verified-1.1.0`); nightly (05:17 UTC) and manual runs use that tag for `make walkthrough INCIDENT=all CHANNEL=released` |
 | `CHANNEL=edge` | attest `main`, built from source | On every push and pull request, and nightly (the run refreshes main's baseline reports) |
 
 Run the edge channel locally from an attest checkout:
 
 ```bash
-make edge-artifacts ATTEST_SRC=../attest
+make edge-artifacts ATTEST_SRC=/absolute/path/to/attest
 make setup CHANNEL=edge && make check CHANNEL=edge
 ```
 
 ### Pointing the agent at a real model
 
-The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the environment, and any exported value overrides `stack.mk`. Any OpenAI-compatible chat-completions endpoint works. The repository never does this: CI and every `make` target use the scripted server, and a real model will not follow the incident script.
+The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the environment, and exported values can override `stack.mk`. The agents use an OpenAI-compatible chat-completions endpoint. The repository's default configuration uses the scripted server; do not export real provider settings when running this demo. A real model will not follow the incident script and can incur charges.
 
 ## Trace doctor
 
@@ -417,7 +420,7 @@ The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the en
 
 ```text
 trace check incidents/INC-1042/trace.py.otlp.json
-trace 29478f3e0a07ff5725faf3112a8e3663: 10 spans, attest trace schema v2
+trace e798498e53e83ead274a435988f68134: 10 spans, attest trace schema v2
 steps: 5 llm_call, 4 tool_call; 1 turn, 0 handoffs, 1 retry
 structure: OK
 coverage: missing evidence
@@ -427,7 +430,7 @@ coverage: missing evidence
 
 The retry is the second `issue_refund` call, made after the first one timed out at 1.2 s: the double refund. The traces record no cost and no message content, so an assertion over either, such as `cost_under(0.05)`, reports not evaluated (`missing_evidence`) instead of passing. The TypeScript trace reports the same counts.
 
-`trace check` ships in attest 1.1.0-rc.4, so `make doctor` runs on both channels.
+`trace check` is included in attest 1.1.0 (first shipped in 1.1.0-rc.4), so `make doctor` runs on both channels.
 
 ## Flaky model: statistical verdicts and a judge budget
 
@@ -443,7 +446,7 @@ One run of a non-deterministic agent cannot show that a change made it worse. `m
 
 The last case shows the judge budget. It runs the test file once with `ATTEST_MAX_JUDGE_CALLS=1` and an empty judge cache. Two tests ask the scripted judge different questions: the first reserves the one call and is served, the second cannot reserve, is never sent, and is `not_evaluated: budget_exhausted`. The model server counts one judge request, the run summary reports `1 calls refused by budget`, and the policy warns (exit 2). Repeated identical questions are answered from the judge cache, so the 20-trial runs above reach the judge at most once.
 
-`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets ship in attest 1.1.0-rc.4, so it runs on both channels. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
+`make flaky` exits 0 only when the trial counts, verdicts, policy exit codes, judge request counts and `not_evaluated` reasons above match; reports and model server counters are written to `reports/flaky/`. Trials, the regression rule and judge budgets are included in attest 1.1.0 (first shipped in 1.1.0-rc.4), so it runs on both channels. See attest's [statistical verdicts guide](https://github.com/attest-framework/attest/blob/main/docs/guides/statistical-verdicts.md).
 
 ## License
 

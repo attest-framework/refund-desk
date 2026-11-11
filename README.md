@@ -420,7 +420,7 @@ The agents read `OPENAI_BASE_URL`, `MODEL_NAME` and `OPENAI_API_KEY` from the en
 
 ```text
 trace check incidents/INC-1042/trace.py.otlp.json
-trace 29478f3e0a07ff5725faf3112a8e3663: 10 spans, attest trace schema v2
+trace e798498e53e83ead274a435988f68134: 10 spans, attest trace schema v2
 steps: 5 llm_call, 4 tool_call; 1 turn, 0 handoffs, 1 retry
 structure: OK
 coverage: missing evidence

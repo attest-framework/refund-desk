@@ -1,10 +1,10 @@
-"""Reproduce a synthetic incident (INC-1042 or INC-1077) with the Python and TS agents.
+"""Reproduce a synthetic incident or scenario with the Python and TS agents.
 
-Run inside scripts/stack.py. Pass --incident 1042 (default), 1077 or 1077-retry. For each language:
-host a fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault is the INC-1042
-incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077;
+Run inside scripts/stack.py. Pass --incident 1042 (default), 1077, 1077-retry or same-amount. For
+each language: host a fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault
+is the INC-1042 incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077;
 world/payments-inc-1077-retry.world.yaml, INC-1077's with the first refund timed out after commit,
-for 1077-retry) with
+for 1077-retry; world/payments-same-amount.world.yaml, with O-2088, for same-amount) with
 `attest-engine world`, run the agent on the incident's customer message, write
 trace.<lang>.otlp.json and print the ledger from the world's final snapshot. The engine comes
 from the installed Python SDK's engine discovery (or ATTEST_ENGINE_PATH on edge).
@@ -110,6 +110,21 @@ INCIDENTS = {
         structure=ROOT / "scripts" / "span-structure-1077.txt",
         trace_dir=ROOT / ".stack" / "incident-1077-retry-traces",
         request=ROOT / "incidents" / "INC-1077" / "request.json",
+    ),
+    # Two approved $8.00 refunds of O-2088, one per chipped mug (issue #52): two refunds of one
+    # amount, each with its own idempotency key, and one confirmation to the order's customer.
+    "same-amount": Incident(
+        number="same-amount",
+        order_id="O-2088",
+        order_cents=3600,
+        expected_refunds=2,
+        expected_refunded_cents=1600,
+        expected_recipients=("C-0858",),
+        agent_spec_version="2",
+        world=ROOT / "world" / "payments-same-amount.world.yaml",
+        structure=ROOT / "scripts" / "span-structure-same-amount.txt",
+        trace_dir=ROOT / ".stack" / "same-amount-traces",
+        request=ROOT / "scenarios" / "same-amount" / "request.json",
     ),
 }
 

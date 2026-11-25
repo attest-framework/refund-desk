@@ -1,0 +1,63 @@
+invoke_agent refund-desk [INTERNAL, UNSET]
+    gen_ai.agent.name = "refund-desk"
+    gen_ai.operation.name = "invoke_agent"
+    refund_desk.reply = "Your refund of $16.00 has been processed, $8.00 for each mug."
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 154
+      gen_ai.usage.output_tokens = 43
+  execute_tool lookup_order [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"order_id\":\"O-2088\"}"
+      gen_ai.tool.call.id = "call_1"
+      gen_ai.tool.call.result = "{\"amount_cents\":3600,\"currency\":\"USD\",\"customer_email\":\"kim.synthetic@example.com\",\"customer_id\":\"C-0858\",\"order_id\":\"O-2088\",\"status\":\"delivered\"}"
+      gen_ai.tool.name = "lookup_order"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 255
+      gen_ai.usage.output_tokens = 57
+  execute_tool issue_refund [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"amount_cents\":800,\"order_id\":\"O-2088\",\"reason\":\"first mug chipped\"}"
+      gen_ai.tool.call.id = "call_2"
+      gen_ai.tool.call.result = "{\"amount_cents\":800,\"order_id\":\"O-2088\",\"refund_id\":\"R-0001\",\"status\":\"committed\"}"
+      gen_ai.tool.name = "issue_refund"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 351
+      gen_ai.usage.output_tokens = 57
+  execute_tool issue_refund [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"amount_cents\":800,\"order_id\":\"O-2088\",\"reason\":\"second mug chipped\"}"
+      gen_ai.tool.call.id = "call_3"
+      gen_ai.tool.call.result = "{\"amount_cents\":800,\"order_id\":\"O-2088\",\"refund_id\":\"R-0002\",\"status\":\"committed\"}"
+      gen_ai.tool.name = "issue_refund"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["tool_calls"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 447
+      gen_ai.usage.output_tokens = 75
+  execute_tool notify_customer [INTERNAL, UNSET]
+      gen_ai.operation.name = "execute_tool"
+      gen_ai.tool.call.arguments = "{\"customer_id\":\"C-0858\",\"message\":\"Your refund of $16.00 for order O-2088 has been processed, $8.00 for each mug.\",\"order_id\":\"O-2088\"}"
+      gen_ai.tool.call.id = "call_4"
+      gen_ai.tool.call.result = "{\"customer_email\":\"kim.synthetic@example.com\",\"notification_id\":\"N-0001\",\"status\":\"sent\"}"
+      gen_ai.tool.name = "notify_customer"
+  chat refund-desk-scripted [CLIENT, UNSET]
+      gen_ai.operation.name = "chat"
+      gen_ai.request.model = "refund-desk-scripted"
+      gen_ai.response.finish_reasons = ["stop"]
+      gen_ai.response.model = "refund-desk-scripted"
+      gen_ai.usage.input_tokens = 561
+      gen_ai.usage.output_tokens = 25

@@ -203,8 +203,53 @@ def refund_desk_inc_1077_reply(messages: list[dict[str, Any]]) -> dict[str, Any]
     raise ScriptError(f"no script step after {len(results)} tool results")
 
 
+def refund_desk_same_amount_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Next assistant message of the same-amount script (issue #52): two approved partial refunds
+    of one amount on one order.
+
+    Both mugs of O-2088 arrived chipped and the customer was approved $8.00 back for each: the
+    agent looks the order up, issues one $8.00 refund per mug, then confirms both to the order's
+    customer. Each refund is a refund of its own, not a retry of the first.
+    """
+    call_number = sum(1 for m in messages if m["role"] == "assistant") + 1
+    results = [
+        (tool_name_for(messages, m["tool_call_id"]), json.loads(m["content"]))
+        for m in messages
+        if m["role"] == "tool"
+    ]
+    for name, result in results:
+        if "error" in result:
+            return text(f"I could not complete {name} ({result['error']}).")
+    if messages[-1]["role"] not in ("user", "tool"):
+        raise ScriptError(f"unexpected last message role {messages[-1]['role']!r}")
+
+    if len(results) == 0:
+        return tool_call(call_number, "lookup_order", {"order_id": "O-2088"})
+    order = results[0][1]
+    if len(results) in (1, 2):
+        mug = "first" if len(results) == 1 else "second"
+        args = {"order_id": order["order_id"], "amount_cents": 800, "reason": f"{mug} mug chipped"}
+        return tool_call(call_number, "issue_refund", args)
+    refunded = sum(int(result["amount_cents"]) for _, result in results[1:3])
+    amount = dollars(refunded)
+    if len(results) == 3:
+        return tool_call(
+            call_number,
+            "notify_customer",
+            {
+                "customer_id": order["customer_id"],
+                "order_id": order["order_id"],
+                "message": f"Your refund of {amount} for order {order['order_id']} "
+                "has been processed, $8.00 for each mug.",
+            },
+        )
+    if len(results) == 4:
+        return text(f"Your refund of {amount} has been processed, $8.00 for each mug.")
+    raise ScriptError(f"no script step after {len(results)} tool results")
+
+
 # Conversation registry: an order id in the first user message selects the script.
-CONVERSATIONS = {"O-2077": refund_desk_inc_1077_reply}
+CONVERSATIONS = {"O-2077": refund_desk_inc_1077_reply, "O-2088": refund_desk_same_amount_reply}
 
 
 def conversation_reply(messages: list[dict[str, Any]]) -> dict[str, Any]:

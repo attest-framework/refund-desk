@@ -1,8 +1,8 @@
 diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
-index 0bfffca..d500749 100644
+index 4894454..628132f 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
-@@ -96,7 +96,7 @@ class Tools:
+@@ -99,7 +99,7 @@ class Tools:
              return self.issue_refund(args["order_id"], args["amount_cents"], args["reason"])
          if name == "notify_customer":
              if self.spec_version == "2":
@@ -12,15 +12,15 @@ index 0bfffca..d500749 100644
          raise ValueError(f"model requested unknown tool {name!r}")
  
 @@ -152,7 +152,7 @@ class Tools:
-             remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
-             if remaining <= 0:
-                 return {"error": "order_fully_refunded", "order_id": order_id}
--            amount_cents = min(amount_cents, remaining)
-+            amount_cents = requested_cents
-         # The key derives from the order and the amount, so a retry of the same refund carries the
-         # same key and the payments API answers it with the first refund (INC-1042).
-         try:
-@@ -192,17 +192,16 @@ class Tools:
+         remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
+         if remaining <= 0:
+             return {"error": "order_fully_refunded", "order_id": order_id}
+-        amount_cents = min(amount_cents, remaining)
++        amount_cents = requested_cents
+         # The key derives from the order, the amount and how many refunds of that amount the order
+         # already has, so a second approved refund of the same amount gets its own key. A retry
+         # that reads the same refunds carries the same key: if the first attempt commits late, the
+@@ -198,17 +198,16 @@ class Tools:
          response.raise_for_status()
          return {"notification_id": response.json()["notification_id"], "status": "sent"}
  
@@ -41,10 +41,10 @@ index 0bfffca..d500749 100644
              "/notifications",
              json={
 diff --git a/ts/src/agent.ts b/ts/src/agent.ts
-index 6e53817..0b0558a 100644
+index 4462127..dc0331d 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
-@@ -136,7 +136,7 @@ export class Tools {
+@@ -141,7 +141,7 @@ export class Tools {
      }
      if (name === "notify_customer") {
        if (this.settings.agentSpecVersion === "2") {
@@ -53,16 +53,16 @@ index 6e53817..0b0558a 100644
        }
        return this.notifyCustomer(stringArg(args, "order_id"), stringArg(args, "message"));
      }
-@@ -215,7 +215,7 @@ export class Tools {
-       const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
-       const remaining = Number(field(order, "amount_cents")) - refunded;
-       if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
--      amountCents = Math.min(amountCents, remaining);
-+      amountCents = requestedCents;
-     }
-     // The key derives from the order and the amount, so a retry of the same refund carries the
-     // same key and the payments API answers it with the first refund (INC-1042).
-@@ -272,11 +272,11 @@ export class Tools {
+@@ -216,7 +216,7 @@ export class Tools {
+     const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
+     const remaining = Number(field(order, "amount_cents")) - refunded;
+     if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+-    const amountCents = Math.min(requestedCents, remaining);
++    const amountCents = requestedCents;
+     // The key derives from the order, the amount and how many refunds of that amount the order
+     // already has, so a second approved refund of the same amount gets its own key. A retry that
+     // reads the same refunds carries the same key: if the first attempt commits late, the payments
+@@ -277,11 +277,11 @@ export class Tools {
     * a session that looked up another customer's order earlier must not send this order's
     * confirmation there (INC-1077).
     */

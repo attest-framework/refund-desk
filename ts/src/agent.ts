@@ -105,9 +105,14 @@ function field(body: { [key: string]: Json }, key: string): Json {
   return value;
 }
 
-/** Same derivation as the Python agent: first 16 hex digits of sha256("<order>:<amount>"). */
-export function idempotencyKey(orderId: string, amountCents: number): string {
-  return createHash("sha256").update(`${orderId}:${amountCents}`).digest("hex").slice(0, 16);
+/**
+ * Same derivation as the Python agent: first 16 hex digits of sha256 of "<order>:<amount>" for the
+ * order's first refund of that amount, and of "<order>:<amount>:<n>" for the n-th further refund of
+ * the same amount, so two approved refunds of one amount never share a key.
+ */
+export function idempotencyKey(orderId: string, amountCents: number, ordinal = 0): string {
+  const seed = ordinal ? `${orderId}:${amountCents}:${ordinal}` : `${orderId}:${amountCents}`;
+  return createHash("sha256").update(seed).digest("hex").slice(0, 16);
 }
 
 function committed(refund: { [key: string]: Json }): ToolResult {
@@ -203,34 +208,34 @@ export class Tools {
   }
 
   private async issueRefundLocked(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
-    let amountCents = requestedCents;
     const existing = await this.orderRefunds(orderId);
-    // A refund of an amount the order already has is a retry: its key matches the first refund's
-    // and the payments API answers it with that refund (INC-1042), so it adds nothing.
-    if (!existing.some((refund) => refund.amount_cents === amountCents)) {
-      const order = await this.orderRecord(orderId);
-      if (order === null) return { error: "order_not_found", order_id: orderId };
-      // The refunds of one order never total more than the order amount (INC-1077): a refund
-      // beyond what is left is capped to it, and a fully refunded order refuses.
-      const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
-      const remaining = Number(field(order, "amount_cents")) - refunded;
-      if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
-      amountCents = Math.min(amountCents, remaining);
-    }
-    // The key derives from the order and the amount, so a retry of the same refund carries the
-    // same key and the payments API answers it with the first refund (INC-1042).
+    const order = await this.orderRecord(orderId);
+    if (order === null) return { error: "order_not_found", order_id: orderId };
+    // The refunds of one order never total more than the order amount (INC-1077): a refund beyond
+    // what is left is capped to it, and a fully refunded order refuses.
+    const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
+    const remaining = Number(field(order, "amount_cents")) - refunded;
+    if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+    const amountCents = Math.min(requestedCents, remaining);
+    // The key derives from the order, the amount and how many refunds of that amount the order
+    // already has, so a second approved refund of the same amount gets its own key. A retry that
+    // reads the same refunds carries the same key: if the first attempt commits late, the payments
+    // API answers the retry with it instead of refunding again (INC-1042). A refund committed before
+    // its response timed out is found by key below, so the model never retries it.
+    const ordinal = existing.filter((refund) => refund.amount_cents === amountCents).length;
+    const key = idempotencyKey(orderId, amountCents, ordinal);
     let response: Response;
     try {
       response = await this.request(
         "POST",
         "/refunds",
         { order_id: orderId, amount_cents: amountCents, reason },
-        { "Idempotency-Key": idempotencyKey(orderId, amountCents) },
+        { "Idempotency-Key": key },
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "TimeoutError") {
         return (
-          (await this.committedRefund(orderId, amountCents)) ?? {
+          (await this.committedRefund(orderId, key)) ?? {
             error: "payments_timeout",
             order_id: orderId,
           }
@@ -253,9 +258,9 @@ export class Tools {
     return ((await response.json()) as { refunds: { [key: string]: Json }[] }).refunds;
   }
 
-  /** The refund the payments API committed before the timeout, if there is one. */
-  private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
-    const match = (await this.orderRefunds(orderId)).find((refund) => refund.amount_cents === amountCents);
+  /** The refund the payments API committed under `key` before the timeout, if there is one. */
+  private async committedRefund(orderId: string, key: string): Promise<ToolResult | null> {
+    const match = (await this.orderRefunds(orderId)).find((refund) => refund.idempotency_key === key);
     return match === undefined ? null : committed(match);
   }
 

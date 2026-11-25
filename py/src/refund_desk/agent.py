@@ -63,9 +63,12 @@ def canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def idempotency_key(order_id: str, amount_cents: int) -> str:
-    """Same derivation as the TS agent: first 16 hex digits of sha256("<order>:<amount>")."""
-    return hashlib.sha256(f"{order_id}:{amount_cents}".encode()).hexdigest()[:16]
+def idempotency_key(order_id: str, amount_cents: int, ordinal: int = 0) -> str:
+    """Same derivation as the TS agent: first 16 hex digits of sha256 of "<order>:<amount>" for
+    the order's first refund of that amount, and of "<order>:<amount>:<n>" for the n-th further
+    refund of the same amount, so two approved refunds of one amount never share a key."""
+    seed = f"{order_id}:{amount_cents}:{ordinal}" if ordinal else f"{order_id}:{amount_cents}"
+    return hashlib.sha256(seed.encode()).hexdigest()[:16]
 
 
 def committed(refund: dict[str, Any]) -> dict[str, Any]:
@@ -141,28 +144,31 @@ class Tools:
     def _issue_refund_locked(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
         requested_cents = amount_cents
         existing = self.order_refunds(order_id)
-        # A refund of an amount the order already has is a retry: its key matches the first
-        # refund's and the payments API answers it with that refund (INC-1042), so it adds nothing.
-        if not any(refund["amount_cents"] == amount_cents for refund in existing):
-            order = self.order_record(order_id)
-            if order is None:
-                return {"error": "order_not_found", "order_id": order_id}
-            # The refunds of one order never total more than the order amount (INC-1077): a
-            # refund beyond what is left is capped to it, and a fully refunded order refuses.
-            remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
-            if remaining <= 0:
-                return {"error": "order_fully_refunded", "order_id": order_id}
-            amount_cents = min(amount_cents, remaining)
-        # The key derives from the order and the amount, so a retry of the same refund carries the
-        # same key and the payments API answers it with the first refund (INC-1042).
+        order = self.order_record(order_id)
+        if order is None:
+            return {"error": "order_not_found", "order_id": order_id}
+        # The refunds of one order never total more than the order amount (INC-1077): a refund
+        # beyond what is left is capped to it, and a fully refunded order refuses.
+        remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
+        if remaining <= 0:
+            return {"error": "order_fully_refunded", "order_id": order_id}
+        amount_cents = min(amount_cents, remaining)
+        # The key derives from the order, the amount and how many refunds of that amount the order
+        # already has, so a second approved refund of the same amount gets its own key. A retry
+        # that reads the same refunds carries the same key: if the first attempt commits late, the
+        # payments API answers the retry with it instead of refunding again (INC-1042). A refund
+        # committed before its response timed out is found by key below, so the model never
+        # retries it.
+        ordinal = sum(1 for refund in existing if refund["amount_cents"] == amount_cents)
+        key = idempotency_key(order_id, amount_cents, ordinal)
         try:
             response = self.http.post(
                 "/refunds",
                 json={"order_id": order_id, "amount_cents": amount_cents, "reason": reason},
-                headers={"Idempotency-Key": idempotency_key(order_id, amount_cents)},
+                headers={"Idempotency-Key": key},
             )
         except httpx.TimeoutException:
-            return self.committed_refund(order_id, amount_cents) or {
+            return self.committed_refund(order_id, key) or {
                 "error": "payments_timeout",
                 "order_id": order_id,
             }
@@ -180,10 +186,10 @@ class Tools:
         refunds: list[dict[str, Any]] = response.json()["refunds"]
         return refunds
 
-    def committed_refund(self, order_id: str, amount_cents: int) -> dict[str, Any] | None:
-        """The refund the payments API committed before the timeout, if there is one."""
+    def committed_refund(self, order_id: str, key: str) -> dict[str, Any] | None:
+        """The refund the payments API committed under ``key`` before the timeout, if any."""
         for refund in self.order_refunds(order_id):
-            if refund["amount_cents"] == amount_cents:
+            if refund.get("idempotency_key") == key:
                 return committed(refund)
         return None
 

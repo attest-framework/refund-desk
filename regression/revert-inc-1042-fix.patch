@@ -1,5 +1,5 @@
 diff --git a/py/src/refund_desk/agent.py b/py/src/refund_desk/agent.py
-index d1bed0e..6db41f0 100644
+index 4894454..2a3379c 100644
 --- a/py/src/refund_desk/agent.py
 +++ b/py/src/refund_desk/agent.py
 @@ -2,7 +2,6 @@
@@ -10,42 +10,62 @@ index d1bed0e..6db41f0 100644
  import json
  import os
  import threading
-@@ -63,20 +62,6 @@ def canonical_json(value: Any) -> str:
+@@ -63,14 +62,6 @@ def canonical_json(value: Any) -> str:
      return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
  
  
--def idempotency_key(order_id: str, amount_cents: int) -> str:
--    """Same derivation as the TS agent: first 16 hex digits of sha256("<order>:<amount>")."""
--    return hashlib.sha256(f"{order_id}:{amount_cents}".encode()).hexdigest()[:16]
+-def idempotency_key(order_id: str, amount_cents: int, ordinal: int = 0) -> str:
+-    """Same derivation as the TS agent: first 16 hex digits of sha256 of "<order>:<amount>" for
+-    the order's first refund of that amount, and of "<order>:<amount>:<n>" for the n-th further
+-    refund of the same amount, so two approved refunds of one amount never share a key."""
+-    seed = f"{order_id}:{amount_cents}:{ordinal}" if ordinal else f"{order_id}:{amount_cents}"
+-    return hashlib.sha256(seed.encode()).hexdigest()[:16]
 -
 -
--def committed(refund: dict[str, Any]) -> dict[str, Any]:
--    return {
--        "refund_id": refund["refund_id"],
--        "order_id": refund["order_id"],
--        "amount_cents": refund["amount_cents"],
--        "status": "committed",
--    }
--
--
- class Tools:
-     def __init__(self, settings: Settings) -> None:
-         self.http = httpx.Client(
-@@ -151,23 +136,24 @@ class Tools:
-             if remaining <= 0:
-                 return {"error": "order_fully_refunded", "order_id": order_id}
-             amount_cents = min(amount_cents, remaining)
--        # The key derives from the order and the amount, so a retry of the same refund carries the
--        # same key and the payments API answers it with the first refund (INC-1042).
+ def committed(refund: dict[str, Any]) -> dict[str, Any]:
+     return {
+         "refund_id": refund["refund_id"],
+@@ -144,34 +135,25 @@ class Tools:
+     def _issue_refund_locked(self, order_id: str, amount_cents: int, reason: str) -> dict[str, Any]:
+         requested_cents = amount_cents
+         existing = self.order_refunds(order_id)
+-        order = self.order_record(order_id)
+-        if order is None:
+-            return {"error": "order_not_found", "order_id": order_id}
+-        # The refunds of one order never total more than the order amount (INC-1077): a refund
+-        # beyond what is left is capped to it, and a fully refunded order refuses.
+-        remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
+-        if remaining <= 0:
+-            return {"error": "order_fully_refunded", "order_id": order_id}
+-        amount_cents = min(amount_cents, remaining)
+-        # The key derives from the order, the amount and how many refunds of that amount the order
+-        # already has, so a second approved refund of the same amount gets its own key. A retry
+-        # that reads the same refunds carries the same key: if the first attempt commits late, the
+-        # payments API answers the retry with it instead of refunding again (INC-1042). A refund
+-        # committed before its response timed out is found by key below, so the model never
+-        # retries it.
+-        ordinal = sum(1 for refund in existing if refund["amount_cents"] == amount_cents)
+-        key = idempotency_key(order_id, amount_cents, ordinal)
++        # A refund of an amount the order already has is taken for a retry and skips the cap.
++        if not any(refund["amount_cents"] == amount_cents for refund in existing):
++            order = self.order_record(order_id)
++            if order is None:
++                return {"error": "order_not_found", "order_id": order_id}
++            # The refunds of one order never total more than the order amount (INC-1077): a
++            # refund beyond what is left is capped to it, and a fully refunded order refuses.
++            remaining = order["amount_cents"] - sum(r["amount_cents"] for r in existing)
++            if remaining <= 0:
++                return {"error": "order_fully_refunded", "order_id": order_id}
++            amount_cents = min(amount_cents, remaining)
 +        # No idempotency key: a retry after a timeout is a new refund (INC-1042).
          try:
              response = self.http.post(
                  "/refunds",
                  json={"order_id": order_id, "amount_cents": amount_cents, "reason": reason},
--                headers={"Idempotency-Key": idempotency_key(order_id, amount_cents)},
+-                headers={"Idempotency-Key": key},
              )
          except httpx.TimeoutException:
--            return self.committed_refund(order_id, amount_cents) or {
+-            return self.committed_refund(order_id, key) or {
 -                "error": "payments_timeout",
 -                "order_id": order_id,
 -            }
@@ -53,25 +73,14 @@ index d1bed0e..6db41f0 100644
          if response.status_code in (404, 422):
              return {"error": response.json()["error"], "order_id": order_id}
          response.raise_for_status()
--        refund = committed(response.json())
-+        stored = response.json()
-+        refund = {
-+            "refund_id": stored["refund_id"],
-+            "order_id": stored["order_id"],
-+            "amount_cents": stored["amount_cents"],
-+            "status": "committed",
-+        }
-         if amount_cents != requested_cents:
-             refund["requested_amount_cents"] = requested_cents
-         return refund
-@@ -178,13 +164,6 @@ class Tools:
+@@ -186,13 +168,6 @@ class Tools:
          refunds: list[dict[str, Any]] = response.json()["refunds"]
          return refunds
  
--    def committed_refund(self, order_id: str, amount_cents: int) -> dict[str, Any] | None:
--        """The refund the payments API committed before the timeout, if there is one."""
+-    def committed_refund(self, order_id: str, key: str) -> dict[str, Any] | None:
+-        """The refund the payments API committed under ``key`` before the timeout, if any."""
 -        for refund in self.order_refunds(order_id):
--            if refund["amount_cents"] == amount_cents:
+-            if refund.get("idempotency_key") == key:
 -                return committed(refund)
 -        return None
 -
@@ -79,7 +88,7 @@ index d1bed0e..6db41f0 100644
          response = self.http.post("/notifications", json={"order_id": order_id, "message": message})
          response.raise_for_status()
 diff --git a/ts/src/agent.ts b/ts/src/agent.ts
-index 0c445ea..792cb6c 100644
+index 4462127..b419afe 100644
 --- a/ts/src/agent.ts
 +++ b/ts/src/agent.ts
 @@ -1,5 +1,4 @@
@@ -88,51 +97,55 @@ index 0c445ea..792cb6c 100644
  import { readFileSync } from "node:fs";
  import { fileURLToPath } from "node:url";
  import {
-@@ -105,20 +104,6 @@ function field(body: { [key: string]: Json }, key: string): Json {
+@@ -105,16 +104,6 @@ function field(body: { [key: string]: Json }, key: string): Json {
    return value;
  }
  
--/** Same derivation as the Python agent: first 16 hex digits of sha256("<order>:<amount>"). */
--export function idempotencyKey(orderId: string, amountCents: number): string {
--  return createHash("sha256").update(`${orderId}:${amountCents}`).digest("hex").slice(0, 16);
+-/**
+- * Same derivation as the Python agent: first 16 hex digits of sha256 of "<order>:<amount>" for the
+- * order's first refund of that amount, and of "<order>:<amount>:<n>" for the n-th further refund of
+- * the same amount, so two approved refunds of one amount never share a key.
+- */
+-export function idempotencyKey(orderId: string, amountCents: number, ordinal = 0): string {
+-  const seed = ordinal ? `${orderId}:${amountCents}:${ordinal}` : `${orderId}:${amountCents}`;
+-  return createHash("sha256").update(seed).digest("hex").slice(0, 16);
 -}
 -
--function committed(refund: { [key: string]: Json }): ToolResult {
--  return {
--    refund_id: field(refund, "refund_id"),
--    order_id: field(refund, "order_id"),
--    amount_cents: field(refund, "amount_cents"),
--    status: "committed",
--  };
--}
--
- export class Tools {
-   // Tail of each order's refund chain: a refund runs after the previous one for its order settles.
-   private readonly orderChains = new Map<string, Promise<unknown>>();
-@@ -143,15 +128,10 @@ export class Tools {
-     throw new Error(`model requested unknown tool ${JSON.stringify(name)}`);
+ function committed(refund: { [key: string]: Json }): ToolResult {
+   return {
+     refund_id: field(refund, "refund_id"),
+@@ -208,38 +197,26 @@ export class Tools {
    }
  
--  private async request(
--    method: string,
--    path: string,
--    body?: Json,
--    headers: Record<string, string> = {},
--  ): Promise<Response> {
-+  private async request(method: string, path: string, body?: Json): Promise<Response> {
-     return fetch(`${this.settings.paymentsBaseUrl}${path}`, {
-       method,
--      headers: { "Content-Type": "application/json", ...headers },
-+      headers: { "Content-Type": "application/json" },
-       body: body === undefined ? undefined : JSON.stringify(body),
-       signal: AbortSignal.timeout(this.settings.paymentsTimeoutMs),
-     });
-@@ -214,24 +194,17 @@ export class Tools {
-       if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
-       amountCents = Math.min(amountCents, remaining);
-     }
--    // The key derives from the order and the amount, so a retry of the same refund carries the
--    // same key and the payments API answers it with the first refund (INC-1042).
+   private async issueRefundLocked(orderId: string, requestedCents: number, reason: string): Promise<ToolResult> {
++    let amountCents = requestedCents;
+     const existing = await this.orderRefunds(orderId);
+-    const order = await this.orderRecord(orderId);
+-    if (order === null) return { error: "order_not_found", order_id: orderId };
+-    // The refunds of one order never total more than the order amount (INC-1077): a refund beyond
+-    // what is left is capped to it, and a fully refunded order refuses.
+-    const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
+-    const remaining = Number(field(order, "amount_cents")) - refunded;
+-    if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
+-    const amountCents = Math.min(requestedCents, remaining);
+-    // The key derives from the order, the amount and how many refunds of that amount the order
+-    // already has, so a second approved refund of the same amount gets its own key. A retry that
+-    // reads the same refunds carries the same key: if the first attempt commits late, the payments
+-    // API answers the retry with it instead of refunding again (INC-1042). A refund committed before
+-    // its response timed out is found by key below, so the model never retries it.
+-    const ordinal = existing.filter((refund) => refund.amount_cents === amountCents).length;
+-    const key = idempotencyKey(orderId, amountCents, ordinal);
++    // A refund of an amount the order already has is taken for a retry and skips the cap.
++    if (!existing.some((refund) => refund.amount_cents === amountCents)) {
++      const order = await this.orderRecord(orderId);
++      if (order === null) return { error: "order_not_found", order_id: orderId };
++      // The refunds of one order never total more than the order amount (INC-1077): a refund
++      // beyond what is left is capped to it, and a fully refunded order refuses.
++      const refunded = existing.reduce((sum, refund) => sum + Number(field(refund, "amount_cents")), 0);
++      const remaining = Number(field(order, "amount_cents")) - refunded;
++      if (remaining <= 0) return { error: "order_fully_refunded", order_id: orderId };
++      amountCents = Math.min(amountCents, remaining);
++    }
 +    // No idempotency key: a retry after a timeout is a new refund (INC-1042).
      let response: Response;
      try {
@@ -140,17 +153,13 @@ index 0c445ea..792cb6c 100644
 -        "POST",
 -        "/refunds",
 -        { order_id: orderId, amount_cents: amountCents, reason },
--        { "Idempotency-Key": idempotencyKey(orderId, amountCents) },
+-        { "Idempotency-Key": key },
 -      );
-+      response = await this.request("POST", "/refunds", {
-+        order_id: orderId,
-+        amount_cents: amountCents,
-+        reason,
-+      });
++      response = await this.request("POST", "/refunds", { order_id: orderId, amount_cents: amountCents, reason });
      } catch (error) {
        if (error instanceof DOMException && error.name === "TimeoutError") {
 -        return (
--          (await this.committedRefund(orderId, amountCents)) ?? {
+-          (await this.committedRefund(orderId, key)) ?? {
 -            error: "payments_timeout",
 -            order_id: orderId,
 -          }
@@ -159,28 +168,13 @@ index 0c445ea..792cb6c 100644
        }
        throw error;
      }
-@@ -239,7 +212,13 @@ export class Tools {
-       const body = (await response.json()) as { error: string };
-       return { error: field(body, "error"), order_id: orderId };
-     }
--    const refund = committed(await Tools.json(response));
-+    const stored = await Tools.json(response);
-+    const refund: ToolResult = {
-+      refund_id: field(stored, "refund_id"),
-+      order_id: field(stored, "order_id"),
-+      amount_cents: field(stored, "amount_cents"),
-+      status: "committed",
-+    };
-     if (amountCents !== requestedCents) refund.requested_amount_cents = requestedCents;
-     return refund;
-   }
-@@ -250,12 +229,6 @@ export class Tools {
+@@ -258,12 +235,6 @@ export class Tools {
      return ((await response.json()) as { refunds: { [key: string]: Json }[] }).refunds;
    }
  
--  /** The refund the payments API committed before the timeout, if there is one. */
--  private async committedRefund(orderId: string, amountCents: number): Promise<ToolResult | null> {
--    const match = (await this.orderRefunds(orderId)).find((refund) => refund.amount_cents === amountCents);
+-  /** The refund the payments API committed under `key` before the timeout, if there is one. */
+-  private async committedRefund(orderId: string, key: string): Promise<ToolResult | null> {
+-    const match = (await this.orderRefunds(orderId)).find((refund) => refund.idempotency_key === key);
 -    return match === undefined ? null : committed(match);
 -  }
 -

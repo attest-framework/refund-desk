@@ -370,6 +370,14 @@ A contract that only ever sees bad runs can be too strict and still look right. 
 
 The run looks close to a bad one, so `test_inc_1077_retry_near_miss.py` and `inc-1077-retry-near-miss.test.ts` show that a rule of one refund per order fails on it, and that the contracts above reject three mutants of its ledger: the retry displacing the second refund, and a third refund duplicating the first, under the same key or a fresh one. Like the frozen incident reproductions, these `inspect()` checks of known violations stay out of the reports; `make capture-tests` runs them. The current-agent test runs the agent against the retry world on every `make check`; `make capture-check` re-records the fixture and requires byte-identical output.
 
+### Near miss: two partial refunds of the same amount
+
+Two refunds of one amount on one order look like a retried refund, and until [#51](https://github.com/attest-framework/refund-desk/issues/51) the agents treated the second as one. `world/payments-same-amount.world.yaml` adds O-2088 ($36.00, C-0858) to the INC-1077 world, and `scenarios/same-amount/request.json` asks for $8.00 back for each of its two chipped mugs (`make incident-same-amount`). The fixed agent issues two refunds with their own keys: R-0001 **$8.00** under `c45272ee046b9182` and R-0002 **$8.00** under `5a9c3f4c89c75489`, then one confirmation to C-0858.
+
+`py/tests/attest/test_same_amount.py` and `ts/tests/attest/same-amount.test.ts` hold the capture (`make capture-same-amount`) and the current agent to `count("refunds", equals=2)` and `idempotent` (a distinct key per refund) for the order, the refunded total within the order amount (`sum`) and the notice to the order's customer (`matches`). These write to the policy-gated reports.
+
+`test_same_amount_near_miss.py` and `same-amount-near-miss.test.ts` show that deduplicating refunds by amount, `unique("refunds", by=["order_id", "amount_cents"])`, fails on this valid run. They also show that the contracts above reject the second refund being answered with the first (`count` fails) and the second carrying the first refund's key (`idempotent` fails). `make capture-tests` runs these `inspect()` checks outside the reports.
+
 
 ## Run it
 
@@ -396,9 +404,10 @@ reports because they assert known violations. The released 1.1.0 channel runs ev
 | `py/`, `ts/` | The Refund Desk agent: an OpenAI chat-completions tool loop with `lookup_order`, `issue_refund` and `notify_customer`, plus its pytest / Vitest attest tests |
 | `agent-spec/` | System prompt and tool schemas shared by both agents |
 | `model-server/` | Scripted OpenAI-compatible server: replies per scenario, a seeded `--flaky P` fault, scripted judge replies for attest's layer 6, and a request counter at `/_admin/stats` |
-| `world/` | The payments API as attest worlds (`world.yaml`): `payments.world.yaml` is healthy, `payments-inc-1042.world.yaml` adds the INC-1042 fault. Every run, test and capture hosts a fresh one. A world does not validate refunds: any order id and amount commit, so the agents' 404/422 branches in `issue_refund` are no longer reached |
+| `world/` | The payments API as attest worlds (`world.yaml`): `payments.world.yaml` is healthy, `payments-inc-1042.world.yaml` adds the INC-1042 fault, and the INC-1077, INC-1077-retry and same-amount worlds back their scenarios. Every run, test and capture hosts a fresh one. A world does not validate refunds: any order id and amount commit, so the agents' 404/422 branches in `issue_refund` are no longer reached |
 | `py/reproduction/`, `ts/reproduction/` | The INC-1042 reproduction tests: a behavior contract over the frozen traces (Act 2) |
 | `incidents/INC-1042/` | The incident as it shipped, frozen: the request, both OTLP/JSON traces of the double-refund agent, their span structure and a corrected trace with one refund |
+| `scenarios/same-amount/` | The customer request of the same-amount near miss, which is not an incident |
 | `py/tests/attest/`, `ts/tests/attest/` | Captured fixtures and contracts for both incidents, including INC-1077's relational contracts |
 | `py/tests/replay/`, `ts/tests/replay/` | Today's agents against both incidents' captured fixtures in strict replay |
 | `mutation.policy.yaml`, `scripts/mutation_report.py` | The Act 5 mutation-score gate and the before/after report that `make mutate` prints (Act 5) |

@@ -356,6 +356,18 @@ contract independently checks the actual world recipient.
 Act 5's recording needed `USER` and `LOGNAME` in addition to `HOME` and `PATH` under `env -i`
 for macOS keychain login. See its [reproduction instructions](incidents/INC-1077/act5/README.md).
 
+### Near miss: partial refunds with a retry
+
+A contract that only ever sees bad runs can be too strict and still look right. `world/payments-inc-1077-retry.world.yaml` is the INC-1077 world with its first refund request set to commit and then time out (`timeout_after_commit`). On the INC-1077 request, the fixed agent reads the order's refunds and finds the committed one instead of sending it again, then caps the whole-order request to the $114.00 left. The ledger is two refunds on O-2077, each key paired with its own amount: R-0001 **$12.00** under `a734c51152a3b7a0` and R-0002 **$114.00** under `f7edd604c8cce4ac`.
+
+`py/tests/attest/test_inc_1077_retry.py` and `ts/tests/attest/inc-1077-retry.test.ts` hold the capture (`make capture-1077-retry`) to these contracts, which write to the policy-gated reports:
+
+- `count("refunds", equals=2)` for the order, and `count(..., equals=1)` for each exact `idempotency_key` and `amount_cents` pair;
+- the refunded total within the order amount (`sum`) and the notice to the order's customer (`matches`);
+- the recorded `timeout_after_commit` fault in the world snapshot.
+
+The run looks close to a bad one, so `test_inc_1077_retry_near_miss.py` and `inc-1077-retry-near-miss.test.ts` show that a rule of one refund per order fails on it, and that the contracts above reject three mutants of its ledger: the retry displacing the second refund, and a third refund duplicating the first, under the same key or a fresh one. Like the frozen incident reproductions, these `inspect()` checks of known violations stay out of the reports; `make capture-tests` runs them. The current-agent test runs the agent against the retry world on every `make check`; `make capture-check` re-records the fixture and requires byte-identical output.
+
 
 ## Run it
 

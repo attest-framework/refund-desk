@@ -1,8 +1,10 @@
 """Reproduce a synthetic incident (INC-1042 or INC-1077) with the Python and TS agents.
 
-Run inside scripts/stack.py. Pass --incident 1042 (default) or 1077. For each language: host a
-fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault is the INC-1042
-incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077) with
+Run inside scripts/stack.py. Pass --incident 1042 (default), 1077 or 1077-retry. For each language:
+host a fresh attest world (world/payments-inc-1042.world.yaml, whose inc-1042 fault is the INC-1042
+incident; world/payments-inc-1077.world.yaml, a healthy world, for INC-1077;
+world/payments-inc-1077-retry.world.yaml, INC-1077's with the first refund timed out after commit,
+for 1077-retry) with
 `attest-engine world`, run the agent on the incident's customer message, write
 trace.<lang>.otlp.json and print the ledger from the world's final snapshot. The engine comes
 from the installed Python SDK's engine discovery (or ATTEST_ENGINE_PATH on edge).
@@ -61,10 +63,8 @@ class Incident:
     world: Path
     structure: Path
     trace_dir: Path
-
-    @property
-    def directory(self) -> Path:
-        return ROOT / "incidents" / f"INC-{self.number}"
+    # The customer message the agent runs on.
+    request: Path
 
 
 INCIDENTS = {
@@ -79,6 +79,7 @@ INCIDENTS = {
         world=ROOT / "world" / "payments-inc-1042.world.yaml",
         structure=ROOT / "scripts" / "span-structure.txt",
         trace_dir=ROOT / ".stack" / "incident-traces",
+        request=ROOT / "incidents" / "INC-1042" / "request.json",
     ),
     "1077": Incident(
         number="1077",
@@ -91,6 +92,24 @@ INCIDENTS = {
         world=ROOT / "world" / "payments-inc-1077.world.yaml",
         structure=ROOT / "scripts" / "span-structure-1077.txt",
         trace_dir=ROOT / ".stack" / "incident-1077-traces",
+        request=ROOT / "incidents" / "INC-1077" / "request.json",
+    ),
+    # The INC-1077 request on the fixed agent, with the first refund committed but timed out
+    # (world/payments-inc-1077-retry.world.yaml): the agent must find that refund instead of
+    # sending it again, so the ledger is the same as INC-1077's. The agent recovers inside the
+    # issue_refund tool, so the span structure is INC-1077's too.
+    "1077-retry": Incident(
+        number="1077-retry",
+        order_id="O-2077",
+        order_cents=12600,
+        expected_refunds=2,
+        expected_refunded_cents=12600,
+        expected_recipients=("C-0744",),
+        agent_spec_version="2",
+        world=ROOT / "world" / "payments-inc-1077-retry.world.yaml",
+        structure=ROOT / "scripts" / "span-structure-1077.txt",
+        trace_dir=ROOT / ".stack" / "incident-1077-retry-traces",
+        request=ROOT / "incidents" / "INC-1077" / "request.json",
     ),
 }
 
@@ -236,7 +255,7 @@ def main() -> int:
     incident = INCIDENTS[args.incident]
     # The agents read the spec version from the environment (stack.mk sets INC-1042's).
     os.environ["AGENT_SPEC_VERSION"] = incident.agent_spec_version
-    request = json.loads((incident.directory / "request.json").read_text())
+    request = json.loads(incident.request.read_text())
     # The admin API is the scripted server itself: under `attest capture`, OPENAI_BASE_URL
     # points at the recording proxy.
     model_admin = f"http://127.0.0.1:{os.environ['MODEL_PORT']}"

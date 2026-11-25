@@ -62,12 +62,28 @@ WORLD_1077 := world/payments-inc-1077.world.yaml
 FIXTURE_1077 := tests/attest/fixtures/$(CAPTURE_NAME_1077).attest.json
 CAPTURE_ARGS_1077 := --incident 1077
 CAPTURE_FLAGS_1077 :=
+# The same request on the fixed agent with the first refund timed out after commit: the agent
+# finds that refund instead of resending it, so the ledger is INC-1077's (two partial refunds,
+# each with its own key), and the world snapshot records the fault.
+CAPTURE_NAME_1077R := inc-1077-retry
+WORLD_1077R := world/payments-inc-1077-retry.world.yaml
+FIXTURE_1077R := tests/attest/fixtures/$(CAPTURE_NAME_1077R).attest.json
+CAPTURE_ARGS_1077R := --incident 1077-retry
 
 ifeq ($(filter $(CHANNEL),released edge),)
 $(error CHANNEL must be released or edge, got "$(CHANNEL)")
 endif
-LIVE_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1042.py --ignore=tests/attest/test_inc_1077.py
-INC1077_MYPY := tests/attest/test_inc_1077.py tests/attest/test_inc_1077_fixed.py
+# Frozen incident reproductions and near-miss mutants assert known violations with inspect(), so
+# they stay out of the policy-gated reports; the fixture-only runs (capture-tests) run them.
+LIVE_PYTEST_IGNORE := --ignore=tests/attest/test_inc_1042.py --ignore=tests/attest/test_inc_1077.py \
+  --ignore=tests/attest/test_inc_1077_retry_near_miss.py
+INC1077_MYPY := tests/attest/test_inc_1077.py tests/attest/test_inc_1077_fixed.py \
+  tests/attest/inc_1077_retry.py tests/attest/test_inc_1077_retry.py \
+  tests/attest/test_inc_1077_retry_near_miss.py
+# The fixed-agent tests also run the current agent in a payments world, so they need the stack:
+# make check runs them, and the fixture-only runs below leave them out.
+LIVE_ATTEST_PY_IGNORE := --ignore=tests/attest/test_inc_1077_fixed.py --ignore=tests/attest/test_inc_1077_retry.py
+LIVE_ATTEST_TS_EXCLUDE := --exclude '**/inc-1077-fixed.test.ts' --exclude '**/inc-1077-retry.test.ts'
 INC1077_REPLAY_MYPY := tests/replay/test_inc_1077_replay.py
 TSC_ATTEST := tsconfig.json
 TSC_REPLAY := tsconfig.json
@@ -77,21 +93,24 @@ ifeq ($(CHANNEL),released)
 unexport ATTEST_ENGINE_PATH
 endif
 
-.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts capture-refresh capture-refresh-py capture-refresh-ts capture-1077 capture-1077-py capture-1077-ts capture-check-1077 recapture-1077-py recapture-1077-ts edge-artifacts clean
+.PHONY: help setup policy-file replay-gate incident incident-1077 check check-py check-ts check-reproduction reproduction check-capture capture-tests check-replay replay-tests check-mutate check-view view check-parity parity parity-record-py-default parity-record-py-attest parity-record-py-reproduction parity-record-py-replay parity-record-ts-default parity-record-ts-attest parity-record-ts-reproduction parity-record-ts-replay check-parity-selftest mutate mutate-record-act1 mutate-record-all replay-types-py replay-types-ts replay-run-py replay-run-ts replay-miss outage walkthrough act1 doctor flaky capture capture-py capture-ts capture-check recapture-py recapture-ts capture-refresh capture-refresh-py capture-refresh-ts capture-1077 capture-1077-py capture-1077-ts capture-check-1077 recapture-1077-py recapture-1077-ts incident-1077-retry capture-1077-retry capture-1077-retry-py capture-1077-retry-ts capture-check-1077-retry recapture-1077-retry-py recapture-1077-retry-ts edge-artifacts clean
 
 help:
 	@echo "make setup [CHANNEL=released|edge]   install the Python and TS agents and attest"
 	@echo "make incident [CHANNEL=edge]          run the INC-1042 request in a fresh payments world and require one refund"
 	@echo "make incident-1077 [CHANNEL=edge]     run INC-1077 on the fixed agent: capped refund, right recipient; writes .stack/incident-1077-traces/"
+	@echo "make incident-1077-retry [CHANNEL=edge]  INC-1077 with the first refund timed out after commit: same ledger; writes .stack/incident-1077-retry-traces/"
 	@echo "make check [CHANNEL=released|edge] [BASELINE_DIR=DIR] [PYTEST_XDIST=-n auto]  lint, type-check and run the attest tests;"
 	@echo "                                     BASELINE_DIR holds main's four attest-report*.json and enables block_on_regression,"
 	@echo "                                     PYTEST_XDIST runs the Python suites in parallel (needs pytest-xdist)"
 	@echo "make doctor [CHANNEL=released|edge]  check the INC-1042 traces' structure and coverage"
 	@echo "make flaky                           seeded flaky trials: Wilson verdicts vs a baseline, judge budget"
 	@echo "make capture [CHANNEL=edge]          capture the INC-1042 run of each agent into a fixture and a test"
-	@echo "make capture-check [CHANNEL=edge]    re-capture INC-1042 and INC-1077, compare bytes, redaction and trace check"
+	@echo "make capture-check [CHANNEL=edge]    re-capture INC-1042, INC-1077 and INC-1077-retry, compare bytes, redaction and trace check"
 	@echo "make capture-1077 [CHANNEL=edge]     capture the INC-1077 run of the fixed agent in each language"
 	@echo "make capture-check-1077 [CHANNEL=edge]  re-capture INC-1077 and compare bytes and redaction"
+	@echo "make capture-1077-retry [CHANNEL=edge]  capture INC-1077 with the first refund timed out after commit, in each language"
+	@echo "make capture-check-1077-retry [CHANNEL=edge]  re-capture INC-1077-retry and compare bytes and redaction"
 	@echo "make replay-miss [CHANNEL=edge]      change the system prompt and show strict replay name the change"
 	@echo "make walkthrough [INCIDENT=1042|1077|all] [CHANNEL=released|edge]  checked acts (default 1042)"
 	@echo "make outage [CHANNEL=released|edge]        judge unreachable: not evaluated: provider_unavailable, policy warns (exit 2)"
@@ -127,6 +146,11 @@ incident:
 # frozen traces of the incident agent).
 incident-1077:
 	$(MAKE) incident INCIDENT=1077
+
+# The INC-1077 request on the fixed agent with the first refund timed out after commit
+# (world/payments-inc-1077-retry.world.yaml): same ledger as INC-1077, two partial refunds.
+incident-1077-retry:
+	$(MAKE) incident INCIDENT=1077-retry
 
 check:
 	$(REQUIRE_CHANNEL)
@@ -288,13 +312,13 @@ mutate-record-act1:
 mutate-record-all:
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest $(LIVE_PYTEST_IGNORE) --ignore=tests/replay \
 	  --attest-strict --attest-report=$(MUTATE_DIR)/attest-report.contracts.py.json
-	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py --attest-strict
+	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest tests/attest $(LIVE_ATTEST_PY_IGNORE) --attest-strict
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all uv run --no-sync pytest reproduction
 	cd py && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) uv run --no-sync pytest tests/replay \
 	  --attest-replay=strict --attest-egress=block --attest-strict
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run \
 	  $(call VITEST_REPORT,$(MUTATE_DIR)/attest-report.contracts.ts.json)
-	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts'
+	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(LIVE_ATTEST_TS_EXCLUDE)
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all pnpm exec vitest run --config reproduction/vitest.config.ts
 	cd ts && ATTEST_CONTRACTS_DIR=$(MUTATE_DIR)/contracts-all $(REPLAY_ENV) ATTEST_STRICT=1 pnpm exec vitest run --config tests/replay/vitest.config.ts
 
@@ -329,7 +353,7 @@ parity-record-py-default:
 	  --attest-strict --attest-report=$(PARITY_DIR)/py/report.default.json
 
 parity-record-py-attest:
-	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py --attest-strict \
+	cd py && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/py uv run --no-sync pytest tests/attest $(LIVE_ATTEST_PY_IGNORE) --attest-strict \
 	  --attest-report=$(PARITY_DIR)/py/report.attest.json
 
 parity-record-py-reproduction:
@@ -345,7 +369,7 @@ parity-record-ts-default:
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.default.json)
 
 parity-record-ts-attest:
-	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts' \
+	cd ts && ATTEST_CONTRACTS_DIR=$(PARITY_DIR)/ts ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(LIVE_ATTEST_TS_EXCLUDE) \
 	  $(call VITEST_REPORT,$(PARITY_DIR)/ts/report.attest.json)
 
 parity-record-ts-reproduction:
@@ -379,9 +403,9 @@ view:
 
 capture-tests:
 	cd py && uv run --no-sync mypy src tests/attest/test_inc_1042.py $(INC1077_MYPY)
-	cd py && uv run --no-sync pytest tests/attest --ignore=tests/attest/test_inc_1077_fixed.py --attest-strict
+	cd py && uv run --no-sync pytest tests/attest $(LIVE_ATTEST_PY_IGNORE) --attest-strict
 	cd ts && pnpm exec tsc --noEmit -p tests/attest/$(TSC_ATTEST)
-	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts --exclude '**/inc-1077-fixed.test.ts'
+	cd ts && ATTEST_STRICT=1 pnpm exec vitest run --config tests/attest/vitest.config.ts $(LIVE_ATTEST_TS_EXCLUDE)
 
 # The INC-1042 reproduction tests read frozen traces only, so they run outside the stack.
 check-reproduction: reproduction
@@ -449,6 +473,7 @@ capture-check:
 	cd py && uv run --no-sync attest trace check $(FIXTURE)
 	cd ts && pnpm exec attest trace check $(FIXTURE)
 	$(MAKE) --no-print-directory capture-check-1077
+	$(MAKE) --no-print-directory capture-check-1077-retry
 
 recapture-py:
 	$(call CAPTURE_PY,$(CAPTURE_DIR)/py,$(CAPTURE_NAME),$(WORLD))
@@ -486,6 +511,36 @@ recapture-1077-py:
 
 recapture-1077-ts:
 	$(call CAPTURE_TS,$(CAPTURE_DIR)/1077/ts,$(CAPTURE_NAME_1077),$(WORLD_1077),$(CAPTURE_ARGS_1077),$(CAPTURE_FLAGS_1077))
+
+# The INC-1077 request on the fixed agent with the first refund timed out after commit
+# (world/payments-inc-1077-retry.world.yaml): a must-pass fixture of two partial refunds and
+# a recovered timeout.
+capture-1077-retry:
+	$(REQUIRE_CHANNEL)
+	$(STACK) $(MAKE) --no-print-directory capture-1077-retry-py capture-1077-retry-ts
+
+capture-1077-retry-py:
+	rm -f py/$(FIXTURE_1077R)
+	$(call CAPTURE_PY,tests/attest/fixtures,$(CAPTURE_NAME_1077R),$(WORLD_1077R),$(CAPTURE_ARGS_1077R))
+
+capture-1077-retry-ts:
+	rm -f ts/$(FIXTURE_1077R)
+	$(call CAPTURE_TS,tests/attest/fixtures,$(CAPTURE_NAME_1077R),$(WORLD_1077R),$(CAPTURE_ARGS_1077R))
+
+capture-check-1077-retry:
+	$(REQUIRE_CHANNEL)
+	rm -rf $(CAPTURE_DIR)/1077-retry
+	$(STACK) $(MAKE) --no-print-directory recapture-1077-retry-py recapture-1077-retry-ts
+	cmp py/$(FIXTURE_1077R) $(CAPTURE_DIR)/1077-retry/py/$(CAPTURE_NAME_1077R).attest.json
+	cmp ts/$(FIXTURE_1077R) $(CAPTURE_DIR)/1077-retry/ts/$(CAPTURE_NAME_1077R).attest.json
+	cd py && uv run --no-sync attest capture --check-redaction $(FIXTURE_1077R)
+	cd ts && pnpm exec attest capture --check-redaction $(FIXTURE_1077R)
+
+recapture-1077-retry-py:
+	$(call CAPTURE_PY,$(CAPTURE_DIR)/1077-retry/py,$(CAPTURE_NAME_1077R),$(WORLD_1077R),$(CAPTURE_ARGS_1077R))
+
+recapture-1077-retry-ts:
+	$(call CAPTURE_TS,$(CAPTURE_DIR)/1077-retry/ts,$(CAPTURE_NAME_1077R),$(WORLD_1077R),$(CAPTURE_ARGS_1077R))
 
 # The whole story, act by act, each act's outcome checked (scripts/walkthrough.py). It runs the
 # existing targets above and a copy of this tree with the INC-1042 fix reverted, so it needs

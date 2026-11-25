@@ -1,0 +1,55 @@
+# The payments and support API the Refund Desk agents call (synthetic), as an attest world, for the
+# partial-refund retry case: the INC-1077 world with the INC-1042 fault on the first refund. The
+# payments API commits the $12.00 shipping refund for O-2077, then holds the response until the
+# client times out. The fixed agent (agent-spec v2) must find that refund by reading the order's
+# refunds instead of sending a second one, then refund what is left of the order ($114.00): two
+# valid partial refunds of different amounts, each with its own idempotency key.
+# `attest-engine world` hosts it on a loopback port and puts its base URL in PAYMENTS_BASE_URL;
+# every run starts from this file, so nothing resets.
+#
+# A world file has no include, so keep this file in step with payments-inc-1077.world.yaml: they
+# differ only in the seed and the faults.
+world_version: 1
+base_url_env: PAYMENTS_BASE_URL
+seed: 1078
+resources:
+  orders:
+    path: /orders
+    id_field: order_id
+    routes: [get]
+    seed:
+      - order_id: O-1042
+        customer_id: C-0311
+        customer_email: alex.synthetic@example.com
+        item: Ceramic pour-over set (synthetic)
+        amount_cents: 8400
+        currency: USD
+        status: delivered
+      - order_id: O-2001
+        customer_id: C-0520
+        customer_email: sam.synthetic@example.com
+        item: Linen apron (synthetic)
+        amount_cents: 2650
+        currency: USD
+        status: delivered
+      - order_id: O-2077
+        customer_id: C-0744
+        customer_email: robin.synthetic@example.com
+        item: Walnut serving board (synthetic)
+        amount_cents: 12600
+        currency: USD
+        status: delivered
+  refunds:
+    path: /refunds
+    id_field: refund_id
+    id_format: "R-%04d"
+    routes: [create, list, get]
+    filters: [order_id]
+    idempotency: {header: Idempotency-Key, field: idempotency_key}
+  notifications:
+    path: /notifications
+    id_field: notification_id
+    id_format: "N-%04d"
+    routes: [create]
+faults:
+  - {id: inc-1077-retry, resource: refunds, route: create, fault: timeout_after_commit, on_requests: [1]}
